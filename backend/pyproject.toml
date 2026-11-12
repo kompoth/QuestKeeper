@@ -1,0 +1,51 @@
+[project]
+name = "questkeeper-backend"
+version = "0.1.0"
+description = "Tabletop campaign knowledge base"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic>=2.13.5",
+    "uvicorn>=0.52.4",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+indent-style = "space"
+docstring-code-format = true
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",
+    "EM101",
+    "EM102",
+    "TRY003",
+    "RUF022",
+    "COM812",
+    "TD",
+    "FIX",
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "FBT", "S101", "PLR0913", "PLR2004", "ANN"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Allow default arguments like, e.g., `data: List[str] = fastapi.Query(None)`.
+extend-immutable-calls = ["Depends", "fastapi.Depends", "Query", "fastapi.Query"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.isort]
+line_length = 120
+multi_line_output = 3
+split_on_trailing_comma = true
