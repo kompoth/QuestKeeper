@@ -50,3 +50,8 @@ convention = "google"
 line_length = 120
 multi_line_output = 3
 split_on_trailing_comma = true
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.102",
+]
