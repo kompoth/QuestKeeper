@@ -6,8 +6,11 @@
 
 // Composables
 import { createRouter, createWebHistory } from 'vue-router'
+import { getEntity } from '@/data/entities'
+import { getWorld } from '@/data/worlds'
 import Landing from '@/layouts/Landing.vue'
 import Login from '@/layouts/Login.vue'
+import NotFound from '@/layouts/NotFound.vue'
 import World from '@/layouts/World.vue'
 import Worlds from '@/layouts/Worlds.vue'
 import LoginView from '@/views/login/LoginView.vue'
@@ -42,12 +45,31 @@ const router = createRouter({
     {
       path: '/w/:worldId',
       component: World,
+      beforeEnter: to => {
+        if (!getWorld(to.params.worldId as string)) {
+          return { path: '/not-found', query: { item: 'World' } }
+        }
+      },
       children: [
         {
           path: 'e/:entityId',
           component: EntityView,
+          beforeEnter: async to => {
+            const entity = await getEntity(to.params.entityId as string)
+            if (!entity) {
+              return { path: '/not-found', query: { item: 'Entity' } }
+            }
+          },
         },
       ],
+    },
+    {
+      path: '/not-found',
+      component: NotFound,
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      component: NotFound,
     },
   ],
 })

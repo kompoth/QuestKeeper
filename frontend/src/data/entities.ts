@@ -54,3 +54,23 @@ export async function getEntity (id: string): Promise<Entity | undefined> {
 export async function listChildEntities (parentId: string): Promise<EntitySummary[]> {
   return entities.filter(entity => entity.parentId === parentId).map(entity => toSummary(entity))
 }
+
+export async function createEntity (worldId: string, parentId: string | undefined, title: string): Promise<EntitySummary> {
+  const entity: Entity = { id: crypto.randomUUID(), worldId, parentId, title, article: { content: '' } }
+  entities.push(entity)
+  return toSummary(entity)
+}
+
+export async function renameEntity (id: string, title: string): Promise<void> {
+  const entity = entities.find(entity => entity.id === id)
+  if (entity) {
+    entity.title = title
+  }
+}
+
+export async function deleteEntity (id: string): Promise<void> {
+  const index = entities.findIndex(entity => entity.id === id)
+  if (index !== -1) {
+    entities.splice(index, 1)
+  }
+}

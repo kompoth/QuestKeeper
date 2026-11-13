@@ -12,7 +12,7 @@
     </div>
   </v-app-bar>
 
-  <v-navigation-drawer v-if="items.length > 0" v-model="drawer" :temporary="mobile">
+  <v-navigation-drawer v-if="items.length > 0" v-model="drawer" :temporary="mobile" width="300">
     <v-text-field
       v-model="search"
       class="ma-2"
@@ -24,20 +24,47 @@
       variant="outlined"
     />
 
-    <v-list density="compact" nav>
-      <NavListItem v-for="item in filteredItems" :key="item.id" :item="item" />
-    </v-list>
+    <v-treeview
+      density="compact"
+      :item-props="item => ({ prependIcon: item.icon, to: item.to, onClick: item.onClick })"
+      item-value="id"
+      :items="items"
+      :search="search"
+    >
+      <template #append="{ item }">
+        <v-menu v-if="item.actions?.length">
+          <template #activator="{ props: menuProps }">
+            <v-btn
+              icon="mdi-dots-vertical"
+              size="small"
+              variant="text"
+              v-bind="menuProps"
+              @click.stop.prevent
+            />
+          </template>
+
+          <v-list density="compact">
+            <v-list-item
+              v-for="action in item.actions"
+              :key="action.title"
+              :prepend-icon="action.icon"
+              :title="action.title"
+              @click="action.onClick"
+            />
+          </v-list>
+        </v-menu>
+      </template>
+    </v-treeview>
   </v-navigation-drawer>
 </template>
 
 <script lang="ts" setup>
   import type { NavItem } from '@/types/nav-item'
-  import { computed, ref, watch } from 'vue'
+  import { ref, watch } from 'vue'
   import { useDisplay } from 'vuetify'
-  import NavListItem from './NavListItem.vue'
   import ThemeToggle from './ThemeToggle.vue'
 
-  const props = withDefaults(defineProps<{
+  withDefaults(defineProps<{
     items?: NavItem[]
     appTitle: string
     backTo?: string
@@ -50,18 +77,6 @@
   }>()
 
   const search = ref('')
-
-  function flattenItems (items: NavItem[]): NavItem[] {
-    return items.flatMap(item => [item, ...(item.children ? flattenItems(item.children) : [])])
-  }
-
-  const filteredItems = computed(() => {
-    const query = search.value.trim().toLowerCase()
-    if (!query) return props.items
-    return flattenItems(props.items)
-      .filter(item => item.title.toLowerCase().includes(query))
-      .map(item => ({ ...item, children: undefined }))
-  })
 
   const { mobile } = useDisplay()
 

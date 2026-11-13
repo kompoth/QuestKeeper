@@ -7,9 +7,25 @@ const worlds: World[] = [
 ]
 
 export function listWorlds (): World[] {
-  return worlds
+  return [...worlds]
 }
 
 export function getWorld (id: string): World | undefined {
   return worlds.find(world => world.id === id)
+}
+
+export function createWorld (name: string, description: string): World {
+  const world: World = { id: crypto.randomUUID(), name, description }
+  worlds.push(world)
+  return world
+}
+
+export function updateWorld (id: string, name: string, description: string): World | undefined {
+  const world = getWorld(id)
+  if (!world) {
+    return undefined
+  }
+  world.name = name
+  world.description = description
+  return world
 }
