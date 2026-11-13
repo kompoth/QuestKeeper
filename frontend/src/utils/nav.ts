@@ -9,7 +9,7 @@ export async function toNavItem (worldId: string, entity: EntitySummary): Promis
     id: entity.id,
     title: entity.title,
     to: `/w/${worldId}/e/${entity.id}`,
-    icon: Object.values(entity.tabKinds).includes('map') ? 'mdi-map' : 'mdi-file-document-outline',
+    icon: entity.hasMap ? 'mdi-map' : 'mdi-file-document-outline',
     children: await Promise.all(children.map(child => toNavItem(worldId, child))),
   }
 }

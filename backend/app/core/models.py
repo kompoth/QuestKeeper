@@ -21,33 +21,29 @@ WorldId = str
 
 
 class Article(BaseModel):
-    id: EntityId
-    world_id: WorldId
-    name: str
-
     markdown: str
-    map: Map
-
-    parent: EntityId
-    children: list[EntityId] = Field(default_factory=list)
 
 
 class MapPin(BaseModel):
     entity_id: EntityId
-    icon: str = "mdi-compass"
+    x: int
+    y: int
 
 
 class Map(BaseModel):
+    pic: str
+    pins: dict[tuple[float, float], MapPin] = Field(default_factory=dict)
+
+
+class Entity(BaseModel):
     id: EntityId
     world_id: WorldId
     name: str
-    pic: str
     parent: EntityId
-    pins: dict[tuple[float, float], MapPin] = Field(default_factory=dict)
+    children: list[EntityId] = Field(default_factory=list)
 
-    @property
-    def children(self) -> list[EntityId]:
-        return [p.entity_id for p in self.pins.values()]
+    article: Article | None = None
+    map: Map | None = None
 
 
 class World(BaseModel):

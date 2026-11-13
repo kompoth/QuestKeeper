@@ -9,22 +9,17 @@ export interface EntityMapContent {
   markers: EntityMarker[]
 }
 
-export type EntityTab
-  = | { kind: 'article', content: string }
-    | { kind: 'map', map: EntityMapContent }
+export interface EntityArticleContent {
+  content: string
+}
 
 export interface Entity {
   id: string
   worldId: string
   parentId?: string
   title: string
-  tabs: Record<string, EntityTab>
-}
-
-export function listEntityTabs (entity: Entity): Record<string, EntityTab['kind']> {
-  return Object.fromEntries(
-    Object.entries(entity.tabs).map(([name, tab]) => [name, tab.kind]),
-  )
+  article?: EntityArticleContent
+  map?: EntityMapContent
 }
 
 export interface EntitySummary {
@@ -32,5 +27,5 @@ export interface EntitySummary {
   worldId: string
   parentId?: string
   title: string
-  tabKinds: Record<string, EntityTab['kind']>
+  hasMap: boolean
 }

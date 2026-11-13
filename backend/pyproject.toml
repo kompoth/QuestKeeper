@@ -22,6 +22,7 @@ line-ending = "auto"
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
+    "CPY",
     "D",
     "EM101",
     "EM102",

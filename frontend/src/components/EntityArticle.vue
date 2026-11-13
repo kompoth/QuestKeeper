@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="entity-article" />
+  <div ref="rootRef" />
 </template>
 
 <script lang="ts" setup>
@@ -19,8 +19,6 @@
     'update:modelValue': [value: string]
   }>()
 
-  const saveIcon = '<span class="mdi mdi-content-save" style="font-size: 24px"></span>'
-
   const rootRef = ref<HTMLElement>()
   let crepe: Crepe | undefined
 
@@ -33,21 +31,6 @@
       features: {
         [Crepe.Feature.Latex]: false,
         [Crepe.Feature.CodeMirror]: false,
-        [Crepe.Feature.Toolbar]: false,
-        [Crepe.Feature.TopBar]: true,
-      },
-      featureConfigs: {
-        [Crepe.Feature.TopBar]: {
-          buildTopBar: builder => {
-            builder.addGroup('save', 'Save').addItem('save', {
-              icon: saveIcon,
-              active: () => false,
-              onRun: () => {
-                // TODO: save entity
-              },
-            })
-          },
-        },
       },
     })
 
@@ -96,7 +79,7 @@
 
   /* Interactive Colors */
   --crepe-color-hover: rgba(var(--v-theme-on-surface), var(--v-hover-opacity));
-  --crepe-color-selected: rgba(var(--v-theme-primary), var(--v-selected-opacity));
+  --crepe-color-selected: rgba(var(--v-theme-primary), 0.5);
   --crepe-color-inline-area: rgb(var(--v-theme-surface-light));
 }
 </style>

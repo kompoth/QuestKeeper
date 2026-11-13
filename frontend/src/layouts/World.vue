@@ -1,7 +1,7 @@
 <template>
   <NavBar :app-title="appTitle" back-to="/w" :items="navItems" @logout="handleLogout" />
 
-  <v-main>
+  <v-main scrollable>
     <router-view :key="route.fullPath" />
   </v-main>
 </template>
