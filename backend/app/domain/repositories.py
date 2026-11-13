@@ -17,35 +17,35 @@ from app.domain.models import (
 
 
 class UserRepository(Protocol):
-    def get_by_id(self, user_id: UserId) -> User | None: ...
+    async def get_by_id(self, user_id: UserId) -> User | None: ...
 
-    def get_by_email(self, email: str) -> User | None: ...
+    async def get_by_email(self, email: str) -> User | None: ...
 
 
 class WorldRepository(Protocol):
-    def get(self, world_id: WorldId) -> World | None: ...
+    async def get(self, world_id: WorldId) -> World | None: ...
 
 
 class EntityRepository(Protocol):
-    def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
+    async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
         """The entity, or None if it doesn't exist or belongs to a different world."""
         ...
 
-    def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
+    async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
         """Ids from the entity's parent up to the root, in that order."""
         ...
 
 
 class PermissionRepository(Protocol):
-    def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:
+    async def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:
         """A user's entity_id -> level grants within one world."""
         ...
 
 
 class InviteRepository(Protocol):
-    def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
+    async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
 
-    def accept(self, invite: WorldInvite) -> None: ...
+    async def accept(self, invite: WorldInvite) -> None: ...
 
 
 @dataclass(frozen=True)

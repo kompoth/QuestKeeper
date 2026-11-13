@@ -5,8 +5,12 @@ description = "Tabletop campaign knowledge base"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "aiomysql>=0.3.2",
+    "alembic>=1.20.1",
+    "cryptography>=50.0.2",
     "fastapi>=0.141.1",
     "pydantic>=2.13.5",
+    "sqlalchemy[asyncio]>=2.0",
     "uvicorn>=0.52.4",
 ]
 
@@ -37,7 +41,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "FBT", "S101", "PLR0913", "PLR2004", "ANN"]
+"tests/**" = ["D", "FBT", "S101", "S106", "PLR0913", "PLR2004", "ANN"]
+"migrations/*" = ["INP001"]
 
 [tool.ruff.lint.flake8-bugbear]
 # Allow default arguments like, e.g., `data: List[str] = fastapi.Query(None)`.
@@ -53,5 +58,13 @@ split_on_trailing_comma = true
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.20.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
     "ty>=0.0.102",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

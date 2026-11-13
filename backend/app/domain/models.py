@@ -41,7 +41,7 @@ class Entity(BaseModel):
     id: EntityId
     world_id: WorldId
     name: str
-    parent: EntityId
+    parent: EntityId | None = None
     children: list[EntityId] = Field(default_factory=list)
 
     article: Article | None = None
