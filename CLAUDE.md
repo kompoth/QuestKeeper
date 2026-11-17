@@ -38,6 +38,8 @@ Commands (run from `backend/`):
 - Lint: `uv run ruff check .`
 - Format: `uv run ruff format .`
 - Type check: `uv run ty check .`
+- Run unit tests: `uv run pytest tests/unit`
+- Run integration tests (requires `DATABASE_URL` pointing at a reachable MySQL instance): `uv run pytest tests/integration`
 
 ### Domain model (`app/core/models.py`)
 

@@ -4,7 +4,7 @@ from app.domain.models import PermissionLevel, World
 from app.domain.repositories import Repositories
 from app.services.access import PermissionDeniedError, WorldNotFoundError
 from app.services.worlds import create_world, get_world, list_worlds, update_world
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePasswordResetRepository,

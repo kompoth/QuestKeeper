@@ -6,7 +6,7 @@ from app.domain.models import User, UserRole, WorldInvite
 from app.domain.repositories import Repositories
 from app.services.access import EmailAlreadyRegisteredError, InviteTokenNotFoundError
 from app.services.signup import confirm_invite_signup
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePasswordResetRepository,

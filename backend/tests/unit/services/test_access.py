@@ -4,7 +4,7 @@ from app.domain.models import Entity, PermissionLevel, World
 from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
 from app.services.access import FULL_ACCESS, EntityNotFoundError, get_entity_access
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePasswordResetRepository,

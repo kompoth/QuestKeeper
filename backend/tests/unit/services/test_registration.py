@@ -6,7 +6,7 @@ from app.domain.models import PendingRegistration, User, UserRole, WorldInvite
 from app.domain.repositories import Repositories
 from app.services.access import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
 from app.services.registration import confirm_registration, request_registration
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakeMailer,

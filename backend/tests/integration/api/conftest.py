@@ -6,11 +6,11 @@ os.environ.setdefault("COOKIE_SECURE", "false")
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.api.dependencies import get_db_session, get_mailer
 from app.main import app
-from tests.services.fakes import FakeMailer
+from tests.unit.services.fakes import FakeMailer
 
 
 @pytest.fixture
@@ -18,18 +18,20 @@ def mailer() -> FakeMailer:
     return FakeMailer()
 
 
-@pytest_asyncio.fixture
-async def async_client(db_engine: AsyncEngine, mailer: FakeMailer):
+@pytest_asyncio.fixture(loop_scope="session")
+async def async_client(db_connection: AsyncConnection, mailer: FakeMailer):
     """A client wired to the test DB, giving each request its own fresh session on the same connection.
 
-    Reusing one `AsyncSession` across requests (like the real app's db_session fixture does within a
-    test) breaks SQLAlchemy's async lazy-loading once requests span different asyncio tasks; a fresh
-    session per request, sharing the engine's single `StaticPool` connection, avoids that.
+    Binding every request's session to the test's own `db_connection` (same one `db_session` uses)
+    keeps everything inside the single outer transaction that gets rolled back at teardown - a session
+    bound to a different connection from the engine's pool would be a separate real transaction and
+    its writes could actually persist against MySQL.
     """
-    session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
 
     async def override_get_db_session():
-        async with session_factory() as session:
+        async with AsyncSession(
+            bind=db_connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        ) as session:
             yield session
             await session.commit()
 

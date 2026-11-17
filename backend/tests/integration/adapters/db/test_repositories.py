@@ -41,6 +41,8 @@ from app.domain.models import (
 )
 from app.services.access import EmailAlreadyRegisteredError
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 def make_user(user_id="u1", email=None) -> UserRow:
     return UserRow(
@@ -559,7 +561,8 @@ class TestSqlSessionRepository:
         found = await SqlSessionRepository(db_session).get("tok")
         assert found is not None
         assert found.user_id == "u1"
-        assert found.expires_at == expires_at
+        # MySQL's DATETIME column truncates to whole seconds, unlike the in-memory value.
+        assert abs((found.expires_at - expires_at).total_seconds()) < 1
 
     async def test_get_returns_none_when_token_does_not_exist(self, db_session):
         found = await SqlSessionRepository(db_session).get("missing")
@@ -621,7 +624,8 @@ class TestSqlPasswordResetRepository:
         found = await SqlPasswordResetRepository(db_session).get("tok")
         assert found is not None
         assert found.user_id == "u1"
-        assert found.expires_at == expires_at
+        # MySQL's DATETIME column truncates to whole seconds, unlike the in-memory value.
+        assert abs((found.expires_at - expires_at).total_seconds()) < 1
 
     async def test_get_returns_none_when_token_does_not_exist(self, db_session):
         found = await SqlPasswordResetRepository(db_session).get("missing")

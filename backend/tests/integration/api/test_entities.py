@@ -1,6 +1,10 @@
+import pytest
+
 from app.adapters.db.orm import UserRow, WorldRow
 from app.domain.models import UserRole
 from app.domain.security import hash_password
+
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 EMAIL = "user@example.com"
 PASSWORD = "correct horse battery staple"  # noqa: S105

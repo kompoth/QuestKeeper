@@ -14,7 +14,7 @@ from app.services.entities import (
     set_article,
     set_map,
 )
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePasswordResetRepository,

@@ -7,7 +7,7 @@ from app.domain.repositories import Repositories
 from app.domain.security import verify_password
 from app.services.access import PasswordResetTokenNotFoundError, UserNotFoundError
 from app.services.password_reset import request_password_reset, request_password_reset_for_user, reset_password
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakeMailer,

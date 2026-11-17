@@ -1,0 +1,42 @@
+name: Backend tests
+
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run pytest tests/unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: questkeeper_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: mysql+aiomysql://root:root@127.0.0.1:3306/questkeeper_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run pytest tests/integration

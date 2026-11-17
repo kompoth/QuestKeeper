@@ -1,8 +1,12 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from app.adapters.db.orm import EntityPermissionRow, EntityRow, UserRow, WorldRow
 from app.domain.models import PermissionLevel, UserRole
 from app.domain.security import hash_password
+
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 EMAIL = "user@example.com"
 PASSWORD = "correct horse battery staple"  # noqa: S105

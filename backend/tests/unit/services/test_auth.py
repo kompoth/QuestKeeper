@@ -6,7 +6,7 @@ from app.domain.models import Session, User, UserRole
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services.auth import InvalidCredentialsError, InvalidSessionError, get_current_user, login, logout
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePasswordResetRepository,

@@ -6,7 +6,6 @@ from typing import Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -49,28 +48,14 @@ class InviteNotFoundError(Exception):
 
 async def _upsert(
     session: AsyncSession,
-    table: Any,  # noqa: ANN401 -- an ORM-mapped class; sqlalchemy's dialect-specific insert() has no precise shared type
+    table: Any,  # noqa: ANN401 -- an ORM-mapped class; sqlalchemy's insert() has no precise shared type
     values: Mapping[str, object],
     *,
-    index_elements: Sequence[str],
     update_columns: Sequence[str],
 ) -> None:
-    """Inserts `values`, or updates `update_columns` in place if a row already matches `index_elements`."""
+    """Inserts `values`, or updates `update_columns` in place if a row already matches a unique key."""
     update_values = {column: values[column] for column in update_columns}
-    bind = session.bind
-    if bind is None:
-        raise RuntimeError("_upsert() called on a session with no bound engine/connection")
-    dialect = bind.dialect.name
-    if dialect == "sqlite":
-        stmt = (
-            sqlite_insert(table)
-            .values(**values)
-            .on_conflict_do_update(index_elements=list(index_elements), set_=update_values)
-        )
-    elif dialect == "mysql":
-        stmt = mysql_insert(table).values(**values).on_duplicate_key_update(**update_values)
-    else:
-        raise RuntimeError(f"Unsupported dialect for upsert: {dialect}")
+    stmt = mysql_insert(table).values(**values).on_duplicate_key_update(**update_values)
     await session.execute(stmt)
 
 
@@ -394,7 +379,6 @@ class SqlPasswordResetRepository:
             self._session,
             PasswordResetRow,
             {"user_id": reset.user_id, "token": reset.token, "expires_at": reset.expires_at},
-            index_elements=["user_id"],
             update_columns=["token", "expires_at"],
         )
 
@@ -431,7 +415,6 @@ class SqlPendingRegistrationRepository:
                 "hashed_password": pending.hashed_password,
                 "expires_at": pending.expires_at,
             },
-            index_elements=["email"],
             update_columns=["token", "name", "hashed_password", "expires_at"],
         )
         result = await self._session.execute(
@@ -514,7 +497,6 @@ class SqlInviteRepository:
                 "confirmation_token": invite.confirmation_token,
                 "token_expires_at": invite.token_expires_at,
             },
-            index_elements=["world_id", "invitee_email"],
             update_columns=["invitee_id", "entity_id", "level", "accepted", "confirmation_token", "token_expires_at"],
         )
         result = await self._session.execute(

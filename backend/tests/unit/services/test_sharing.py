@@ -13,7 +13,7 @@ from app.services.sharing import (
     list_pending_invites,
     revoke_permission,
 )
-from tests.services.fakes import (
+from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakeMailer,

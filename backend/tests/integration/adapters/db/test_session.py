@@ -5,9 +5,9 @@ from app.adapters.db import session as session_module
 
 
 def test_get_database_url_reads_the_env_var(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_URL", "mysql+aiomysql://user:pass@localhost/test")
 
-    assert session_module.get_database_url() == "sqlite+aiosqlite:///:memory:"
+    assert session_module.get_database_url() == "mysql+aiomysql://user:pass@localhost/test"
 
 
 def test_get_database_url_raises_key_error_when_unset(monkeypatch):
@@ -18,7 +18,7 @@ def test_get_database_url_raises_key_error_when_unset(monkeypatch):
 
 
 async def test_create_engine_and_session_factory_smoke(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_URL", "mysql+aiomysql://user:pass@localhost/test")
 
     engine = session_module.create_engine()
     try:

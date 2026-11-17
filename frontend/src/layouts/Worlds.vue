@@ -35,16 +35,15 @@
         </v-col>
 
         <v-col cols="12" md="4" sm="6">
-          <v-card height="220" hover @click="handleCreateWorld">
-            <v-sheet class="d-flex align-center justify-center" color="surface-variant" height="140">
-              <v-icon color="on-surface-variant" icon="mdi-image" size="48" />
-            </v-sheet>
-
-            <v-card-title>
-              <v-icon icon="mdi-plus" start />
-              New World
-            </v-card-title>
-
+          <v-card
+            class="d-flex flex-column align-center justify-center text-center"
+            height="220"
+            hover
+            variant="outlined"
+            @click="handleCreateWorld"
+          >
+            <v-icon color="on-surface-variant" icon="mdi-plus" size="48" />
+            <v-card-title>New World</v-card-title>
             <v-card-subtitle>Tell me a tale, great or small</v-card-subtitle>
           </v-card>
         </v-col>
