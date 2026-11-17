@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.domain.models import PermissionLevel, UserRole
@@ -43,6 +45,12 @@ class EntityRow(Base):
     parent_id: Mapped[str | None] = mapped_column(
         String(ID_LENGTH), ForeignKey("entities.id"), index=True, default=None
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, default=None)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+    created_by: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"))
+    updated_by: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"))
 
     article: Mapped[ArticleRow | None] = relationship(back_populates="entity", uselist=False)
     map: Mapped[MapRow | None] = relationship(back_populates="entity", uselist=False)

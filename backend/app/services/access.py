@@ -12,6 +12,18 @@ class EntityNotFoundError(Exception):
     pass
 
 
+class WorldNotFoundError(Exception):
+    pass
+
+
+class UserNotFoundError(Exception):
+    pass
+
+
+class PermissionDeniedError(Exception):
+    pass
+
+
 async def get_entity_access(
     repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
 ) -> EntityAccess:

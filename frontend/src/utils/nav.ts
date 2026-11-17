@@ -1,5 +1,6 @@
 import type { EntitySummary } from '@/types/entity'
 import type { NavItem } from '@/types/nav-item'
+import type { InjectionKey } from 'vue'
 import { listChildEntities } from '@/data/entities'
 
 export interface NavItemHandlers {
@@ -7,6 +8,8 @@ export interface NavItemHandlers {
   onAddPage: (parentId: string) => void
   onDelete: (entityId: string) => void
 }
+
+export const refreshNavItemsKey: InjectionKey<() => Promise<void>> = Symbol('refreshNavItems')
 
 export async function toNavItem (worldId: string, entity: EntitySummary, handlers: NavItemHandlers): Promise<NavItem> {
   const children = await listChildEntities(entity.id)

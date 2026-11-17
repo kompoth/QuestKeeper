@@ -33,12 +33,13 @@
 
 <script lang="ts" setup>
   import type { Entity } from '@/types/entity'
-  import { computed, ref, watchEffect } from 'vue'
+  import { computed, inject, ref, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import EntityArticle from '@/components/EntityArticle.vue'
   import EntityMap from '@/components/EntityMap.vue'
   import { useRenameDialog } from '@/composables/useRenameDialog'
   import { getEntity, renameEntity } from '@/data/entities'
+  import { refreshNavItemsKey } from '@/utils/nav'
 
   interface BreadcrumbItem {
     title: string
@@ -52,6 +53,7 @@
   const entityEditable = ref(false)
 
   const { openRenameDialog } = useRenameDialog()
+  const refreshNavItems = inject(refreshNavItemsKey)
 
   const entity = ref<Entity>()
   const entityPath = ref<Entity[]>([])
@@ -100,6 +102,7 @@
     if (title === undefined) return
     await renameEntity(entity.value.id, title)
     await refreshEntity()
+    await refreshNavItems?.()
   }
 </script>
 

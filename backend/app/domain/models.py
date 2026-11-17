@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -46,6 +47,11 @@ class Entity(BaseModel):
 
     article: Article | None = None
     map: Map | None = None
+
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: UserId | None = None
+    updated_by: UserId | None = None
 
 
 class World(BaseModel):

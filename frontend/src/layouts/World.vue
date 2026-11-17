@@ -22,13 +22,13 @@
 
 <script lang="ts" setup>
   import type { NavItem } from '@/types/nav-item'
-  import { computed, ref, watchEffect } from 'vue'
+  import { computed, provide, ref, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import NavBar from '@/components/NavBar.vue'
   import { useRenameDialog } from '@/composables/useRenameDialog'
   import { createEntity, deleteEntity, getEntity, listEntities, renameEntity } from '@/data/entities'
   import { getWorld } from '@/data/worlds'
-  import { toNavItem } from '@/utils/nav'
+  import { refreshNavItemsKey, toNavItem } from '@/utils/nav'
 
   const { renameDialogOpen, renameDialogTitle, openRenameDialog, confirmRename, cancelRename } = useRenameDialog()
 
@@ -51,6 +51,8 @@
   }
 
   watchEffect(refreshNavItems)
+
+  provide(refreshNavItemsKey, refreshNavItems)
 
   async function handleAddPage (parentId?: string) {
     const created = await createEntity(worldId.value, parentId, 'New page')
