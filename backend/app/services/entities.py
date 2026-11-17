@@ -1,11 +1,37 @@
 """Orchestrates entity mutations with the access checks from `services.access`."""
 
+from collections.abc import Sequence
 from uuid import uuid4
 
 from app.domain import permissions
-from app.domain.models import Article, EntityId, Map, UserId, WorldId
+from app.domain.models import Article, Entity, EntityId, Map, UserId, WorldId
 from app.domain.repositories import Repositories
 from app.services.access import PermissionDeniedError, WorldNotFoundError, get_entity_access
+
+
+async def list_entities(repos: Repositories, user_id: UserId, world_id: WorldId) -> Sequence[Entity]:
+    """Every entity in the world, unfiltered by grant; requires world membership (owner or any grant)."""
+    world = await repos.worlds.get(world_id)
+    if world is None:
+        raise WorldNotFoundError(world_id)
+
+    if not permissions.is_owner(world, user_id):
+        grants = await repos.permissions.get_grants(world_id, user_id)
+        if not grants:
+            raise PermissionDeniedError(user_id, world_id)
+
+    return await repos.entities.list_for_world(world_id)
+
+
+async def get_entity(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> Entity:
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.read:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    entity = await repos.entities.get(world_id, entity_id)
+    if entity is None:
+        raise RuntimeError(f"get_entity() found no entity right after get_entity_access() confirmed one: {entity_id}")
+    return entity
 
 
 async def create_entity(

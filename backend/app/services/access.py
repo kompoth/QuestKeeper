@@ -16,8 +16,28 @@ class WorldNotFoundError(Exception):
     pass
 
 
-class UserNotFoundError(Exception):
+class InviteNotFoundError(Exception):
     pass
+
+
+class InviteTokenNotFoundError(Exception):
+    pass
+
+
+class EmailAlreadyRegisteredError(Exception):
+    pass
+
+
+class PasswordResetTokenNotFoundError(Exception):
+    pass
+
+
+class RegistrationTokenNotFoundError(Exception):
+    pass
+
+
+class UserNotFoundError(Exception):
+    """Raised for an admin-targeted user_id lookup - never used on a public, email-based path."""
 
 
 class PermissionDeniedError(Exception):

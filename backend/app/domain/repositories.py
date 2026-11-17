@@ -9,6 +9,8 @@ from app.domain.models import (
     Entity,
     EntityId,
     Map,
+    PasswordReset,
+    PendingRegistration,
     PermissionLevel,
     Session,
     User,
@@ -24,9 +26,19 @@ class UserRepository(Protocol):
 
     async def get_by_email(self, email: str) -> User | None: ...
 
+    async def create(self, user: User) -> None:
+        """Raises EmailAlreadyRegisteredError if the email is taken, including a race against a concurrent create()."""
+        ...
+
+    async def update_password(self, user_id: UserId, hashed_password: str) -> None: ...
+
 
 class WorldRepository(Protocol):
     async def get(self, world_id: WorldId) -> World | None: ...
+
+    async def list_for_user(self, user_id: UserId) -> Sequence[World]:
+        """Worlds the user owns, plus worlds where they hold any permission grant."""
+        ...
 
     async def create(self, world: World) -> None: ...
 
@@ -36,6 +48,10 @@ class WorldRepository(Protocol):
 class EntityRepository(Protocol):
     async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
         """The entity, or None if it doesn't exist, belongs to a different world, or is soft-deleted."""
+        ...
+
+    async def list_for_world(self, world_id: WorldId) -> Sequence[Entity]:
+        """Every non-deleted entity in the world, unfiltered by permission grants."""
         ...
 
     async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
@@ -82,8 +98,27 @@ class PermissionRepository(Protocol):
 class InviteRepository(Protocol):
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
 
-    async def create(self, invite: WorldInvite) -> None:
-        """Creates the pending invite, or replaces it if one for the same (world, invitee) already exists."""
+    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
+        """Pending (unaccepted) invites addressed to `email`, resolved or not."""
+        ...
+
+    async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
+        """Every invite for the world, pending or accepted - for the owner's settings view."""
+        ...
+
+    async def get_by_token(self, token: str) -> WorldInvite | None:
+        """The invite for an unexpired, not-yet-accepted confirmation token, or None."""
+        ...
+
+    async def create(self, invite: WorldInvite) -> WorldInvite:
+        """Creates the pending invite, or upserts in place (preserving id) if one for (world, invitee_email) exists.
+
+        Returns the persisted invite - its `id` may differ from `invite.id` on an upsert.
+        """
+        ...
+
+    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
+        """Backfills `invitee_id` onto every pending, not-yet-resolved invite addressed to `email`."""
         ...
 
     async def accept(self, invite: WorldInvite) -> None: ...
@@ -94,6 +129,32 @@ class SessionRepository(Protocol):
 
     async def get(self, token: str) -> Session | None:
         """The session, or None if it doesn't exist or has expired."""
+        ...
+
+    async def delete(self, token: str) -> None: ...
+
+    async def delete_all_for_user(self, user_id: UserId) -> None: ...
+
+
+class PasswordResetRepository(Protocol):
+    async def create(self, reset: PasswordReset) -> None:
+        """Replaces any outstanding request for the same user_id - at most one valid reset token per user."""
+        ...
+
+    async def get(self, token: str) -> PasswordReset | None:
+        """The reset request, or None if it doesn't exist or has expired."""
+        ...
+
+    async def delete(self, token: str) -> None: ...
+
+
+class PendingRegistrationRepository(Protocol):
+    async def create(self, pending: PendingRegistration) -> PendingRegistration:
+        """Creates, or replaces in place (fresh token) if an unconfirmed row for this email exists."""
+        ...
+
+    async def get_by_token(self, token: str) -> PendingRegistration | None:
+        """The pending registration for an unexpired token, or None."""
         ...
 
     async def delete(self, token: str) -> None: ...
@@ -109,3 +170,5 @@ class Repositories:
     permissions: PermissionRepository
     invites: InviteRepository
     sessions: SessionRepository
+    password_resets: PasswordResetRepository
+    pending_registrations: PendingRegistrationRepository

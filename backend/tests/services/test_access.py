@@ -7,6 +7,8 @@ from app.services.access import FULL_ACCESS, EntityNotFoundError, get_entity_acc
 from tests.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
+    FakePasswordResetRepository,
+    FakePendingRegistrationRepository,
     FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
@@ -34,6 +36,8 @@ def make_repos(*, entity, world=None, ancestor_ids=(), grants=None) -> Repositor
         permissions=permissions,
         invites=FakeInviteRepository(),
         sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        pending_registrations=FakePendingRegistrationRepository(),
     )
 
 

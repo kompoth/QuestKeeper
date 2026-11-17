@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.security import APIKeyCookie
 
-from app.domain.models import Session, User
+from app.domain.models import Session, User, UserId
 from app.domain.repositories import Repositories
 from app.domain.security import verify_password
 
@@ -27,14 +27,18 @@ class InvalidSessionError(Exception):
     pass
 
 
+async def create_session(repos: Repositories, user_id: UserId) -> Session:
+    session = Session(token=secrets.token_urlsafe(32), user_id=user_id, expires_at=datetime.now(UTC) + SESSION_TTL)
+    await repos.sessions.create(session)
+    return session
+
+
 async def login(repos: Repositories, email: str, password: str) -> Session:
     user = await repos.users.get_by_email(email)
     if user is None or not verify_password(password, user.hashed_password):
         raise InvalidCredentialsError(email)
 
-    session = Session(token=secrets.token_urlsafe(32), user_id=user.id, expires_at=datetime.now(UTC) + SESSION_TTL)
-    await repos.sessions.create(session)
-    return session
+    return await create_session(repos, user.id)
 
 
 async def logout(repos: Repositories, token: str) -> None:

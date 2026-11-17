@@ -1,4 +1,6 @@
-from app.domain.models import Entity, Map, PermissionLevel, WorldInvite
+from datetime import UTC, datetime
+
+from app.domain.models import Entity, Map, PendingRegistration, PermissionLevel, WorldInvite
 
 
 def test_entity_defaults_to_no_parent_and_no_children():
@@ -17,6 +19,21 @@ def test_map_defaults_to_no_pins():
 
 
 def test_world_invite_defaults_to_not_accepted():
-    invite = WorldInvite(world_id="w1", invitee_id="u1", entity_id="e1", level=PermissionLevel.READ)
+    invite = WorldInvite(
+        id="i1",
+        world_id="w1",
+        invitee_id="u1",
+        invitee_email="u1@example.com",
+        entity_id="e1",
+        level=PermissionLevel.READ,
+    )
 
     assert invite.accepted is False
+
+
+def test_pending_registration_construction():
+    pending = PendingRegistration(
+        token="tok", name="New User", email="new@example.com", hashed_password="hash", expires_at=datetime.now(UTC)
+    )
+
+    assert pending.email == "new@example.com"

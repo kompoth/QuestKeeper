@@ -9,6 +9,8 @@ from app.domain.models import (
     Entity,
     EntityId,
     Map,
+    PasswordReset,
+    PendingRegistration,
     PermissionLevel,
     Session,
     User,
@@ -17,6 +19,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
+from app.services.access import EmailAlreadyRegisteredError
 
 
 @dataclass
@@ -29,13 +32,26 @@ class FakeUserRepository:
     async def get_by_email(self, email: str) -> User | None:
         return next((user for user in self.users_by_id.values() if user.email == email), None)
 
+    async def create(self, user: User) -> None:
+        if any(existing.email == user.email for existing in self.users_by_id.values()):
+            raise EmailAlreadyRegisteredError(user.email)
+        self.users_by_id[user.id] = user
+
+    async def update_password(self, user_id: UserId, hashed_password: str) -> None:
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"hashed_password": hashed_password})
+
 
 @dataclass
 class FakeWorldRepository:
     worlds_by_id: dict[WorldId, World] = field(default_factory=dict)
+    granted_world_ids_by_user: dict[UserId, set[WorldId]] = field(default_factory=dict)
 
     async def get(self, world_id: WorldId) -> World | None:
         return self.worlds_by_id.get(world_id)
+
+    async def list_for_user(self, user_id: UserId) -> Sequence[World]:
+        granted = self.granted_world_ids_by_user.get(user_id, set())
+        return [world for world in self.worlds_by_id.values() if world.owner_id == user_id or world.id in granted]
 
     async def create(self, world: World) -> None:
         self.worlds_by_id[world.id] = world
@@ -54,6 +70,9 @@ class FakeEntityRepository:
         if entity is None or entity.world_id != world_id:
             return None
         return entity
+
+    async def list_for_world(self, world_id: WorldId) -> Sequence[Entity]:
+        return [entity for entity in self.entities_by_id.values() if entity.world_id == world_id]
 
     async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:  # noqa: ARG002
         return self.ancestor_ids_by_entity.get(entity_id, [])
@@ -123,13 +142,37 @@ class FakeInviteRepository:
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]:
         return [invite for invite in self.invites if invite.invitee_id == user_id and not invite.accepted]
 
-    async def create(self, invite: WorldInvite) -> None:
+    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
+        return [invite for invite in self.invites if invite.invitee_email == email and not invite.accepted]
+
+    async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
+        return [invite for invite in self.invites if invite.world_id == world_id]
+
+    async def get_by_token(self, token: str) -> WorldInvite | None:
+        invite = next((invite for invite in self.invites if invite.confirmation_token == token), None)
+        if invite is None or invite.accepted or invite.token_expires_at is None:
+            return None
+        if invite.token_expires_at <= datetime.now(UTC):
+            return None
+        return invite
+
+    async def create(self, invite: WorldInvite) -> WorldInvite:
+        existing = next(
+            (e for e in self.invites if e.world_id == invite.world_id and e.invitee_email == invite.invitee_email),
+            None,
+        )
+        merged = invite.model_copy(update={"id": existing.id}) if existing else invite
+        self.invites = [e for e in self.invites if e is not existing]
+        self.invites.append(merged)
+        return merged
+
+    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
         self.invites = [
-            existing
-            for existing in self.invites
-            if not (existing.world_id == invite.world_id and existing.invitee_id == invite.invitee_id)
+            invite.model_copy(update={"invitee_id": user_id})
+            if invite.invitee_email == email and invite.invitee_id is None and not invite.accepted
+            else invite
+            for invite in self.invites
         ]
-        self.invites.append(invite)
 
     async def accept(self, invite: WorldInvite) -> None:
         self.invites.append(invite)
@@ -150,3 +193,65 @@ class FakeSessionRepository:
 
     async def delete(self, token: str) -> None:
         self.sessions_by_token.pop(token, None)
+
+    async def delete_all_for_user(self, user_id: UserId) -> None:
+        self.sessions_by_token = {
+            token: session for token, session in self.sessions_by_token.items() if session.user_id != user_id
+        }
+
+
+@dataclass
+class FakePasswordResetRepository:
+    resets_by_user_id: dict[UserId, PasswordReset] = field(default_factory=dict)
+
+    async def create(self, reset: PasswordReset) -> None:
+        self.resets_by_user_id[reset.user_id] = reset
+
+    async def get(self, token: str) -> PasswordReset | None:
+        reset = next((r for r in self.resets_by_user_id.values() if r.token == token), None)
+        if reset is None or reset.expires_at <= datetime.now(UTC):
+            return None
+        return reset
+
+    async def delete(self, token: str) -> None:
+        self.resets_by_user_id = {
+            user_id: reset for user_id, reset in self.resets_by_user_id.items() if reset.token != token
+        }
+
+
+@dataclass
+class FakePendingRegistrationRepository:
+    pending_by_email: dict[str, PendingRegistration] = field(default_factory=dict)
+
+    async def create(self, pending: PendingRegistration) -> PendingRegistration:
+        self.pending_by_email[pending.email] = pending
+        return pending
+
+    async def get_by_token(self, token: str) -> PendingRegistration | None:
+        pending = next((p for p in self.pending_by_email.values() if p.token == token), None)
+        if pending is None or pending.expires_at <= datetime.now(UTC):
+            return None
+        return pending
+
+    async def delete(self, token: str) -> None:
+        self.pending_by_email = {email: p for email, p in self.pending_by_email.items() if p.token != token}
+
+
+@dataclass
+class FakeMailer:
+    existing_user_invites: list[tuple[str, str]] = field(default_factory=list)  # (to_email, world_name)
+    new_user_invites: list[tuple[str, str, str]] = field(default_factory=list)  # (to_email, world_name, confirm_url)
+    password_resets: list[tuple[str, str]] = field(default_factory=list)  # (to_email, reset_url)
+    registration_confirmations: list[tuple[str, str]] = field(default_factory=list)  # (to_email, confirm_url)
+
+    async def send_existing_user_invite(self, *, to_email: str, world_name: str) -> None:
+        self.existing_user_invites.append((to_email, world_name))
+
+    async def send_new_user_invite(self, *, to_email: str, world_name: str, confirm_url: str) -> None:
+        self.new_user_invites.append((to_email, world_name, confirm_url))
+
+    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+        self.password_resets.append((to_email, reset_url))
+
+    async def send_registration_confirmation(self, *, to_email: str, confirm_url: str) -> None:
+        self.registration_confirmations.append((to_email, confirm_url))

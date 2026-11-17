@@ -9,6 +9,8 @@ from app.services.auth import InvalidCredentialsError, InvalidSessionError, get_
 from tests.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
+    FakePasswordResetRepository,
+    FakePendingRegistrationRepository,
     FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
@@ -28,6 +30,8 @@ def make_repos(*, users=None, sessions=None) -> Repositories:
         permissions=FakePermissionRepository(),
         invites=FakeInviteRepository(),
         sessions=sessions or FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        pending_registrations=FakePendingRegistrationRepository(),
     )
 
 

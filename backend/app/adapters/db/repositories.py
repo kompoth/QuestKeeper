@@ -2,8 +2,12 @@
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +17,8 @@ from app.adapters.db.orm import (
     EntityRow,
     MapPinRow,
     MapRow,
+    PasswordResetRow,
+    PendingRegistrationRow,
     SessionRow,
     UserRow,
     WorldInviteRow,
@@ -24,6 +30,8 @@ from app.domain.models import (
     EntityId,
     Map,
     MapPin,
+    PasswordReset,
+    PendingRegistration,
     PermissionLevel,
     Session,
     User,
@@ -32,14 +40,56 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
+from app.services.access import EmailAlreadyRegisteredError
 
 
 class InviteNotFoundError(Exception):
     pass
 
 
+async def _upsert(
+    session: AsyncSession,
+    table: Any,  # noqa: ANN401 -- an ORM-mapped class; sqlalchemy's dialect-specific insert() has no precise shared type
+    values: Mapping[str, object],
+    *,
+    index_elements: Sequence[str],
+    update_columns: Sequence[str],
+) -> None:
+    """Inserts `values`, or updates `update_columns` in place if a row already matches `index_elements`."""
+    update_values = {column: values[column] for column in update_columns}
+    bind = session.bind
+    if bind is None:
+        raise RuntimeError("_upsert() called on a session with no bound engine/connection")
+    dialect = bind.dialect.name
+    if dialect == "sqlite":
+        stmt = (
+            sqlite_insert(table)
+            .values(**values)
+            .on_conflict_do_update(index_elements=list(index_elements), set_=update_values)
+        )
+    elif dialect == "mysql":
+        stmt = mysql_insert(table).values(**values).on_duplicate_key_update(**update_values)
+    else:
+        raise RuntimeError(f"Unsupported dialect for upsert: {dialect}")
+    await session.execute(stmt)
+
+
 def _user_from_row(row: UserRow) -> User:
     return User(id=row.id, name=row.name, email=row.email, hashed_password=row.hashed_password, role=row.role)
+
+
+def _invite_from_row(row: WorldInviteRow) -> WorldInvite:
+    return WorldInvite(
+        id=row.id,
+        world_id=row.world_id,
+        invitee_id=row.invitee_id,
+        invitee_email=row.invitee_email,
+        entity_id=row.entity_id,
+        level=row.level,
+        accepted=row.accepted,
+        confirmation_token=row.confirmation_token,
+        token_expires_at=row.token_expires_at,
+    )
 
 
 def _world_from_row(row: WorldRow) -> World:
@@ -87,6 +137,21 @@ class SqlUserRepository:
         row = result.scalar_one_or_none()
         return _user_from_row(row) if row else None
 
+    async def create(self, user: User) -> None:
+        self._session.add(
+            UserRow(id=user.id, name=user.name, email=user.email, hashed_password=user.hashed_password, role=user.role)
+        )
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise EmailAlreadyRegisteredError(user.email) from exc
+
+    async def update_password(self, user_id: UserId, hashed_password: str) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise RuntimeError(f"update_password() called for a user that doesn't exist: {user_id}")
+        row.hashed_password = hashed_password
+
 
 class SqlWorldRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -95,6 +160,22 @@ class SqlWorldRepository:
     async def get(self, world_id: WorldId) -> World | None:
         row = await self._session.get(WorldRow, world_id)
         return _world_from_row(row) if row else None
+
+    async def list_for_user(self, user_id: UserId) -> Sequence[World]:
+        owned = await self._session.execute(select(WorldRow).where(WorldRow.owner_id == user_id))
+        worlds_by_id = {row.id: row for row in owned.scalars()}
+
+        granted = await self._session.execute(
+            select(WorldRow)
+            .join(EntityRow, EntityRow.world_id == WorldRow.id)
+            .join(EntityPermissionRow, EntityPermissionRow.entity_id == EntityRow.id)
+            .where(EntityPermissionRow.user_id == user_id)
+            .distinct()
+        )
+        for row in granted.scalars():
+            worlds_by_id.setdefault(row.id, row)
+
+        return [_world_from_row(row) for row in worlds_by_id.values()]
 
     async def create(self, world: World) -> None:
         self._session.add(
@@ -121,10 +202,15 @@ class SqlEntityRepository:
         self._session = session
 
     async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
+        # populate_existing forces a fresh eager-load of article/map every call. Without it, a `get()`
+        # for an entity already in this session's identity map (e.g. after a sibling set_article/set_map
+        # mutation expired its relationship attributes) falls back to lazy-loading on access in
+        # `_entity_from_row`, which can't bridge into an active greenlet from inside ASGI dispatch.
         row = await self._session.get(
             EntityRow,
             entity_id,
             options=[selectinload(EntityRow.article), selectinload(EntityRow.map).selectinload(MapRow.pins)],
+            populate_existing=True,
         )
         if row is None or row.world_id != world_id or row.deleted_at is not None:
             return None
@@ -133,6 +219,22 @@ class SqlEntityRepository:
             select(EntityRow.id).where(EntityRow.parent_id == entity_id, EntityRow.deleted_at.is_(None))
         )
         return _entity_from_row(row, result.scalars().all())
+
+    async def list_for_world(self, world_id: WorldId) -> Sequence[Entity]:
+        result = await self._session.execute(
+            select(EntityRow)
+            .where(EntityRow.world_id == world_id, EntityRow.deleted_at.is_(None))
+            .options(selectinload(EntityRow.article), selectinload(EntityRow.map).selectinload(MapRow.pins))
+            .execution_options(populate_existing=True)
+        )
+        rows = result.scalars().all()
+
+        children_by_parent_id: dict[str, list[str]] = {}
+        for row in rows:
+            if row.parent_id is not None:
+                children_by_parent_id.setdefault(row.parent_id, []).append(row.id)
+
+        return [_entity_from_row(row, children_by_parent_id.get(row.id, [])) for row in rows]
 
     async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
         ancestor_ids: list[EntityId] = []
@@ -279,6 +381,88 @@ class SqlSessionRepository:
         if row is not None:
             await self._session.delete(row)
 
+    async def delete_all_for_user(self, user_id: UserId) -> None:
+        await self._session.execute(delete(SessionRow).where(SessionRow.user_id == user_id))
+
+
+class SqlPasswordResetRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, reset: PasswordReset) -> None:
+        await _upsert(
+            self._session,
+            PasswordResetRow,
+            {"user_id": reset.user_id, "token": reset.token, "expires_at": reset.expires_at},
+            index_elements=["user_id"],
+            update_columns=["token", "expires_at"],
+        )
+
+    async def get(self, token: str) -> PasswordReset | None:
+        result = await self._session.execute(select(PasswordResetRow).where(PasswordResetRow.token == token))
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+
+        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
+        if expires_at <= datetime.now(UTC):
+            return None
+        return PasswordReset(token=row.token, user_id=row.user_id, expires_at=expires_at)
+
+    async def delete(self, token: str) -> None:
+        result = await self._session.execute(select(PasswordResetRow).where(PasswordResetRow.token == token))
+        row = result.scalar_one_or_none()
+        if row is not None:
+            await self._session.delete(row)
+
+
+class SqlPendingRegistrationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, pending: PendingRegistration) -> PendingRegistration:
+        await _upsert(
+            self._session,
+            PendingRegistrationRow,
+            {
+                "token": pending.token,
+                "name": pending.name,
+                "email": pending.email,
+                "hashed_password": pending.hashed_password,
+                "expires_at": pending.expires_at,
+            },
+            index_elements=["email"],
+            update_columns=["token", "name", "hashed_password", "expires_at"],
+        )
+        result = await self._session.execute(
+            select(PendingRegistrationRow).where(PendingRegistrationRow.email == pending.email)
+        )
+        row = result.scalar_one()
+        return PendingRegistration(
+            token=row.token,
+            name=row.name,
+            email=row.email,
+            hashed_password=row.hashed_password,
+            expires_at=row.expires_at,
+        )
+
+    async def get_by_token(self, token: str) -> PendingRegistration | None:
+        row = await self._session.get(PendingRegistrationRow, token)
+        if row is None:
+            return None
+
+        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
+        if expires_at <= datetime.now(UTC):
+            return None
+        return PendingRegistration(
+            token=row.token, name=row.name, email=row.email, hashed_password=row.hashed_password, expires_at=expires_at
+        )
+
+    async def delete(self, token: str) -> None:
+        row = await self._session.get(PendingRegistrationRow, token)
+        if row is not None:
+            await self._session.delete(row)
+
 
 class SqlInviteRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -288,38 +472,77 @@ class SqlInviteRepository:
         result = await self._session.execute(
             select(WorldInviteRow).where(WorldInviteRow.invitee_id == user_id, ~WorldInviteRow.accepted)
         )
-        return [
-            WorldInvite(
-                world_id=row.world_id,
-                invitee_id=row.invitee_id,
-                entity_id=row.entity_id,
-                level=row.level,
-                accepted=row.accepted,
-            )
-            for row in result.scalars()
-        ]
+        return [_invite_from_row(row) for row in result.scalars()]
 
-    async def create(self, invite: WorldInvite) -> None:
-        row = await self._session.get(WorldInviteRow, (invite.world_id, invite.invitee_id))
-        if row is None:
-            self._session.add(
-                WorldInviteRow(
-                    world_id=invite.world_id,
-                    invitee_id=invite.invitee_id,
-                    entity_id=invite.entity_id,
-                    level=invite.level,
-                    accepted=invite.accepted,
-                )
+    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
+        result = await self._session.execute(
+            select(WorldInviteRow).where(WorldInviteRow.invitee_email == email, ~WorldInviteRow.accepted)
+        )
+        return [_invite_from_row(row) for row in result.scalars()]
+
+    async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
+        result = await self._session.execute(
+            select(WorldInviteRow).where(WorldInviteRow.world_id == world_id).order_by(WorldInviteRow.invitee_email)
+        )
+        return [_invite_from_row(row) for row in result.scalars()]
+
+    async def get_by_token(self, token: str) -> WorldInvite | None:
+        result = await self._session.execute(select(WorldInviteRow).where(WorldInviteRow.confirmation_token == token))
+        row = result.scalar_one_or_none()
+        if row is None or row.accepted or row.token_expires_at is None:
+            return None
+
+        expires_at = (
+            row.token_expires_at.replace(tzinfo=UTC) if row.token_expires_at.tzinfo is None else row.token_expires_at
+        )
+        if expires_at <= datetime.now(UTC):
+            return None
+        return _invite_from_row(row)
+
+    async def create(self, invite: WorldInvite) -> WorldInvite:
+        await _upsert(
+            self._session,
+            WorldInviteRow,
+            {
+                "id": invite.id,
+                "world_id": invite.world_id,
+                "invitee_id": invite.invitee_id,
+                "invitee_email": invite.invitee_email,
+                "entity_id": invite.entity_id,
+                "level": invite.level,
+                "accepted": invite.accepted,
+                "confirmation_token": invite.confirmation_token,
+                "token_expires_at": invite.token_expires_at,
+            },
+            index_elements=["world_id", "invitee_email"],
+            update_columns=["invitee_id", "entity_id", "level", "accepted", "confirmation_token", "token_expires_at"],
+        )
+        result = await self._session.execute(
+            select(WorldInviteRow).where(
+                WorldInviteRow.world_id == invite.world_id, WorldInviteRow.invitee_email == invite.invitee_email
             )
-        else:
-            row.entity_id = invite.entity_id
-            row.level = invite.level
-            row.accepted = invite.accepted
+        )
+        return _invite_from_row(result.scalar_one())
+
+    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
+        await self._session.execute(
+            update(WorldInviteRow)
+            .where(WorldInviteRow.invitee_email == email, WorldInviteRow.invitee_id.is_(None), ~WorldInviteRow.accepted)
+            .values(invitee_id=user_id)
+        )
 
     async def accept(self, invite: WorldInvite) -> None:
-        row = await self._session.get(WorldInviteRow, (invite.world_id, invite.invitee_id))
+        result = await self._session.execute(
+            select(WorldInviteRow).where(
+                WorldInviteRow.world_id == invite.world_id, WorldInviteRow.invitee_id == invite.invitee_id
+            )
+        )
+        row = result.scalar_one_or_none()
         if row is None:
             raise InviteNotFoundError(invite.world_id, invite.invitee_id)
+
+        if invite.invitee_id is None:
+            raise RuntimeError(f"accept() called for an invite with no resolved invitee_id: {invite.id}")
 
         row.accepted = True
         self._session.add(

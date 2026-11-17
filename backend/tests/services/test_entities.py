@@ -8,6 +8,8 @@ from app.services.entities import (
     clear_map,
     create_entity,
     delete_entity,
+    get_entity,
+    list_entities,
     rename_entity,
     set_article,
     set_map,
@@ -15,6 +17,8 @@ from app.services.entities import (
 from tests.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
+    FakePasswordResetRepository,
+    FakePendingRegistrationRepository,
     FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
@@ -42,7 +46,70 @@ def make_repos(*, entity=None, world=None, ancestor_ids=(), grants=None) -> Repo
         permissions=permissions,
         invites=FakeInviteRepository(),
         sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        pending_registrations=FakePendingRegistrationRepository(),
     )
+
+
+async def test_list_entities_succeeds_for_world_owner():
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    repos = make_repos(entity=entity, world=world)
+
+    result = await list_entities(repos, USER_ID, WORLD_ID)
+
+    assert [found.id for found in result] == [ENTITY_ID]
+
+
+async def test_list_entities_succeeds_for_a_user_with_any_grant_in_the_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    repos = make_repos(entity=entity, world=world, grants={ENTITY_ID: PermissionLevel.READ})
+
+    result = await list_entities(repos, USER_ID, WORLD_ID)
+
+    assert [found.id for found in result] == [ENTITY_ID]
+
+
+async def test_list_entities_raises_when_caller_has_no_grants_in_the_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world, grants={})
+
+    with pytest.raises(PermissionDeniedError):
+        await list_entities(repos, USER_ID, WORLD_ID)
+
+
+async def test_list_entities_raises_when_world_not_found():
+    repos = make_repos()
+
+    with pytest.raises(WorldNotFoundError):
+        await list_entities(repos, USER_ID, WORLD_ID)
+
+
+async def test_get_entity_succeeds_with_read_access():
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(entity=entity, world=world, grants={ENTITY_ID: PermissionLevel.READ})
+
+    found = await get_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+    assert found == entity
+
+
+async def test_get_entity_raises_without_read_access():
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(entity=entity, world=world, grants={})
+
+    with pytest.raises(PermissionDeniedError):
+        await get_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+
+async def test_get_entity_raises_when_not_found():
+    repos = make_repos()
+
+    with pytest.raises(EntityNotFoundError):
+        await get_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
 
 
 async def test_create_entity_as_root_succeeds_for_world_owner():
