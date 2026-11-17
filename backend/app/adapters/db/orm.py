@@ -94,6 +94,14 @@ class EntityPermissionRow(Base):
     level: Mapped[PermissionLevel] = mapped_column(Enum(PermissionLevel, native_enum=False, length=10))
 
 
+class SessionRow(Base):
+    __tablename__ = "sessions"
+
+    token: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class WorldInviteRow(Base):
     """One row per (world, invitee): re-inviting an already-pending user updates it in place."""
 

@@ -13,6 +13,7 @@ from app.adapters.db.orm import (
     EntityRow,
     MapPinRow,
     MapRow,
+    SessionRow,
     UserRow,
     WorldInviteRow,
     WorldRow,
@@ -24,6 +25,7 @@ from app.domain.models import (
     Map,
     MapPin,
     PermissionLevel,
+    Session,
     User,
     UserId,
     World,
@@ -250,6 +252,30 @@ class SqlPermissionRepository:
 
     async def revoke(self, user_id: UserId, entity_id: EntityId) -> None:
         row = await self._session.get(EntityPermissionRow, (user_id, entity_id))
+        if row is not None:
+            await self._session.delete(row)
+
+
+class SqlSessionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, session: Session) -> None:
+        self._session.add(SessionRow(token=session.token, user_id=session.user_id, expires_at=session.expires_at))
+
+    async def get(self, token: str) -> Session | None:
+        row = await self._session.get(SessionRow, token)
+        if row is None:
+            return None
+
+        # DATETIME columns round-trip as naive on both SQLite and MySQL; every value stored here is UTC.
+        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
+        if expires_at <= datetime.now(UTC):
+            return None
+        return Session(token=row.token, user_id=row.user_id, expires_at=expires_at)
+
+    async def delete(self, token: str) -> None:
+        row = await self._session.get(SessionRow, token)
         if row is not None:
             await self._session.delete(row)
 

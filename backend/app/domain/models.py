@@ -23,6 +23,14 @@ class User(BaseModel):
     role: UserRole
 
 
+class Session(BaseModel):
+    """A logged-in session, identified by its opaque `token`."""
+
+    token: str
+    user_id: UserId
+    expires_at: datetime
+
+
 class Article(BaseModel):
     markdown: str
 

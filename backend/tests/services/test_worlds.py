@@ -8,6 +8,7 @@ from tests.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePermissionRepository,
+    FakeSessionRepository,
     FakeUserRepository,
     FakeWorldRepository,
 )
@@ -25,6 +26,7 @@ def make_repos(*, world=None) -> Repositories:
         entities=FakeEntityRepository(),
         permissions=FakePermissionRepository(),
         invites=FakeInviteRepository(),
+        sessions=FakeSessionRepository(),
     )
 
 

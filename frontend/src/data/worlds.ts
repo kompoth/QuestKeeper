@@ -29,3 +29,10 @@ export function updateWorld (id: string, name: string, description: string): Wor
   world.description = description
   return world
 }
+
+export function deleteWorld (id: string): void {
+  const index = worlds.findIndex(world => world.id === id)
+  if (index !== -1) {
+    worlds.splice(index, 1)
+  }
+}

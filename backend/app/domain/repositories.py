@@ -10,6 +10,7 @@ from app.domain.models import (
     EntityId,
     Map,
     PermissionLevel,
+    Session,
     User,
     UserId,
     World,
@@ -88,6 +89,16 @@ class InviteRepository(Protocol):
     async def accept(self, invite: WorldInvite) -> None: ...
 
 
+class SessionRepository(Protocol):
+    async def create(self, session: Session) -> None: ...
+
+    async def get(self, token: str) -> Session | None:
+        """The session, or None if it doesn't exist or has expired."""
+        ...
+
+    async def delete(self, token: str) -> None: ...
+
+
 @dataclass(frozen=True)
 class Repositories:
     """All repo ports bundled together, for passing around services in one argument."""
@@ -97,3 +108,4 @@ class Repositories:
     entities: EntityRepository
     permissions: PermissionRepository
     invites: InviteRepository
+    sessions: SessionRepository

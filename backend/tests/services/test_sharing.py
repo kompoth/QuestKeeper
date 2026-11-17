@@ -8,6 +8,7 @@ from tests.services.fakes import (
     FakeEntityRepository,
     FakeInviteRepository,
     FakePermissionRepository,
+    FakeSessionRepository,
     FakeUserRepository,
     FakeWorldRepository,
 )
@@ -26,6 +27,7 @@ def make_repos(*, world=None, entity=None, users=None) -> Repositories:
         entities=FakeEntityRepository(entities_by_id={entity.id: entity} if entity else {}),
         permissions=FakePermissionRepository(),
         invites=FakeInviteRepository(),
+        sessions=FakeSessionRepository(),
     )
 
 
@@ -140,6 +142,7 @@ async def test_accept_invite_succeeds_for_the_invitee():
         entities=FakeEntityRepository(),
         permissions=FakePermissionRepository(),
         invites=invites,
+        sessions=FakeSessionRepository(),
     )
     invite = WorldInvite(world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ)
 

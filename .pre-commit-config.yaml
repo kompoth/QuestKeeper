@@ -1,0 +1,37 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (backend)
+        entry: bash -c "cd backend && uv run ruff check --fix ."
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format (backend)
+        entry: bash -c "cd backend && uv run ruff format ."
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: ty-check
+        name: ty check (backend)
+        entry: bash -c "cd backend && uv run ty check ."
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c "cd frontend && npm run lint -- --fix"
+        language: system
+        files: ^frontend/.*\.(js|ts|vue)$
+        pass_filenames: false
+
+      - id: vue-tsc
+        name: type-check (frontend)
+        entry: bash -c "cd frontend && npm run type-check"
+        language: system
+        files: ^frontend/.*\.(ts|vue)$
+        pass_filenames: false

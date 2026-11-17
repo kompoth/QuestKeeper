@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,6 +8,7 @@ from app.adapters.db.orm import (
     EntityRow,
     MapPinRow,
     MapRow,
+    SessionRow,
     UserRow,
     WorldInviteRow,
     WorldRow,
@@ -17,10 +18,11 @@ from app.adapters.db.repositories import (
     SqlEntityRepository,
     SqlInviteRepository,
     SqlPermissionRepository,
+    SqlSessionRepository,
     SqlUserRepository,
     SqlWorldRepository,
 )
-from app.domain.models import Article, Map, MapPin, PermissionLevel, UserRole, World, WorldInvite
+from app.domain.models import Article, Map, MapPin, PermissionLevel, Session, UserRole, World, WorldInvite
 
 
 def make_user(user_id="u1", email=None) -> UserRow:
@@ -430,6 +432,51 @@ class TestSqlEntityRepository:
         await db_session.commit()
 
         assert await db_session.get(MapRow, "e1") is None
+
+
+class TestSqlSessionRepository:
+    async def test_create_and_get_round_trips_a_session(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+
+        expires_at = datetime.now(UTC) + timedelta(days=1)
+        session = Session(token="tok", user_id="u1", expires_at=expires_at)
+        await SqlSessionRepository(db_session).create(session)
+        await db_session.commit()
+
+        found = await SqlSessionRepository(db_session).get("tok")
+        assert found is not None
+        assert found.user_id == "u1"
+        assert found.expires_at == expires_at
+
+    async def test_get_returns_none_when_token_does_not_exist(self, db_session):
+        found = await SqlSessionRepository(db_session).get("missing")
+
+        assert found is None
+
+    async def test_get_returns_none_for_an_expired_session(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(SessionRow(token="tok", user_id="u1", expires_at=datetime.now(UTC) - timedelta(seconds=1)))
+        await db_session.commit()
+
+        found = await SqlSessionRepository(db_session).get("tok")
+
+        assert found is None
+
+    async def test_delete_removes_the_session(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(SessionRow(token="tok", user_id="u1", expires_at=datetime.now(UTC) + timedelta(days=1)))
+        await db_session.commit()
+
+        await SqlSessionRepository(db_session).delete("tok")
+        await db_session.commit()
+
+        assert await db_session.get(SessionRow, "tok") is None
+
+    async def test_delete_is_a_no_op_when_token_does_not_exist(self, db_session):
+        await SqlSessionRepository(db_session).delete("missing")
 
 
 class TestSqlPermissionRepository:

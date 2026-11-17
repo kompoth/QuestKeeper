@@ -10,6 +10,7 @@ from app.domain.models import (
     EntityId,
     Map,
     PermissionLevel,
+    Session,
     User,
     UserId,
     World,
@@ -132,3 +133,20 @@ class FakeInviteRepository:
 
     async def accept(self, invite: WorldInvite) -> None:
         self.invites.append(invite)
+
+
+@dataclass
+class FakeSessionRepository:
+    sessions_by_token: dict[str, Session] = field(default_factory=dict)
+
+    async def create(self, session: Session) -> None:
+        self.sessions_by_token[session.token] = session
+
+    async def get(self, token: str) -> Session | None:
+        session = self.sessions_by_token.get(token)
+        if session is None or session.expires_at <= datetime.now(UTC):
+            return None
+        return session
+
+    async def delete(self, token: str) -> None:
+        self.sessions_by_token.pop(token, None)
