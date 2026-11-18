@@ -7,13 +7,13 @@ from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services.auth import InvalidCredentialsError, InvalidSessionError, get_current_user, login, logout
 from tests.unit.services.fakes import (
+    FakeEntityPermissionRepository,
     FakeEntityRepository,
-    FakeInviteRepository,
     FakePasswordResetRepository,
     FakePendingRegistrationRepository,
-    FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
+    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
 
@@ -27,8 +27,8 @@ def make_repos(*, users=None, sessions=None) -> Repositories:
         users=FakeUserRepository(users_by_id=users or {}),
         worlds=FakeWorldRepository(),
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(),
-        invites=FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
         sessions=sessions or FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),

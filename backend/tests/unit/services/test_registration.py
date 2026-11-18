@@ -7,19 +7,20 @@ from app.domain.repositories import Repositories
 from app.services.access import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
 from app.services.registration import confirm_registration, request_registration
 from tests.unit.services.fakes import (
+    FakeEntityPermissionRepository,
     FakeEntityRepository,
-    FakeInviteRepository,
     FakeMailer,
     FakePasswordResetRepository,
     FakePendingRegistrationRepository,
-    FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
+    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
 
 EMAIL = "new@example.com"
 PASSWORD = "correct horse battery staple"  # noqa: S105
+FRONTEND_ORIGIN = "http://localhost:5173"
 
 
 def make_repos(*, pending_registrations=None, invites=None, users=None) -> Repositories:
@@ -27,8 +28,8 @@ def make_repos(*, pending_registrations=None, invites=None, users=None) -> Repos
         users=FakeUserRepository(users_by_id=users or {}),
         worlds=FakeWorldRepository(),
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(),
-        invites=invites if invites is not None else FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=invites if invites is not None else FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=pending_registrations or FakePendingRegistrationRepository(),
@@ -46,7 +47,7 @@ async def test_request_registration_sends_mail_and_persists_a_pending_row():
     repos = make_repos(pending_registrations=pending_registrations)
     mailer = FakeMailer()
 
-    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD)
+    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD, frontend_origin=FRONTEND_ORIGIN)
 
     assert len(pending_registrations.pending_by_email) == 1
     pending = pending_registrations.pending_by_email[EMAIL]
@@ -63,7 +64,7 @@ async def test_request_registration_rejects_an_already_registered_email():
     mailer = FakeMailer()
 
     with pytest.raises(EmailAlreadyRegisteredError):
-        await request_registration(repos, mailer, "New User", EMAIL, PASSWORD)
+        await request_registration(repos, mailer, "New User", EMAIL, PASSWORD, frontend_origin=FRONTEND_ORIGIN)
 
 
 async def test_re_requesting_for_the_same_unconfirmed_email_replaces_the_pending_row():
@@ -71,10 +72,12 @@ async def test_re_requesting_for_the_same_unconfirmed_email_replaces_the_pending
     repos = make_repos(pending_registrations=pending_registrations)
     mailer = FakeMailer()
 
-    await request_registration(repos, mailer, "First Name", EMAIL, PASSWORD)
+    await request_registration(repos, mailer, "First Name", EMAIL, PASSWORD, frontend_origin=FRONTEND_ORIGIN)
     first_token = pending_registrations.pending_by_email[EMAIL].token
 
-    await request_registration(repos, mailer, "Second Name", EMAIL, "a different password")
+    await request_registration(
+        repos, mailer, "Second Name", EMAIL, "a different password", frontend_origin=FRONTEND_ORIGIN
+    )
 
     assert len(pending_registrations.pending_by_email) == 1
     second = pending_registrations.pending_by_email[EMAIL]
@@ -87,11 +90,11 @@ async def test_confirm_registration_creates_user_deletes_pending_row_and_logs_in
     pending_registrations = FakePendingRegistrationRepository()
     repos = make_repos(pending_registrations=pending_registrations)
     mailer = FakeMailer()
-    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD)
+    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD, frontend_origin=FRONTEND_ORIGIN)
     token = pending_registrations.pending_by_email[EMAIL].token
 
     invite = make_invite("i1", "w1")
-    invites = FakeInviteRepository(invites=[invite])
+    invites = FakeWorldInviteRepository(invites=[invite])
     repos = make_repos(pending_registrations=pending_registrations, invites=invites)
 
     result = await confirm_registration(repos, token)
@@ -128,7 +131,7 @@ async def test_confirm_registration_raises_when_email_already_registered_in_the_
     pending_registrations = FakePendingRegistrationRepository()
     repos = make_repos(pending_registrations=pending_registrations)
     mailer = FakeMailer()
-    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD)
+    await request_registration(repos, mailer, "New User", EMAIL, PASSWORD, frontend_origin=FRONTEND_ORIGIN)
     token = pending_registrations.pending_by_email[EMAIL].token
 
     existing = User(id="existing", name="Existing", email=EMAIL, hashed_password="x", role=UserRole.MEMBER)

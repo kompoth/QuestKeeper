@@ -8,14 +8,14 @@ from app.domain.security import verify_password
 from app.services.access import PasswordResetTokenNotFoundError, UserNotFoundError
 from app.services.password_reset import request_password_reset, request_password_reset_for_user, reset_password
 from tests.unit.services.fakes import (
+    FakeEntityPermissionRepository,
     FakeEntityRepository,
-    FakeInviteRepository,
     FakeMailer,
     FakePasswordResetRepository,
     FakePendingRegistrationRepository,
-    FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
+    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
 
@@ -23,6 +23,7 @@ USER_ID = "u1"
 EMAIL = "user@example.com"
 OLD_PASSWORD = "old password"  # noqa: S105
 NEW_PASSWORD = "new password"  # noqa: S105
+FRONTEND_ORIGIN = "http://localhost:5173"
 
 
 def make_user() -> User:
@@ -34,8 +35,8 @@ def make_repos(*, users=None, sessions=None, password_resets=None) -> Repositori
         users=FakeUserRepository(users_by_id=users or {}),
         worlds=FakeWorldRepository(),
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(),
-        invites=FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
         sessions=sessions or FakeSessionRepository(),
         password_resets=password_resets or FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),
@@ -47,7 +48,7 @@ async def test_request_password_reset_sends_mail_for_existing_user():
     repos = make_repos(users={USER_ID: make_user()}, password_resets=password_resets)
     mailer = FakeMailer()
 
-    await request_password_reset(repos, mailer, EMAIL)
+    await request_password_reset(repos, mailer, EMAIL, frontend_origin=FRONTEND_ORIGIN)
 
     assert len(password_resets.resets_by_user_id) == 1
     reset = next(iter(password_resets.resets_by_user_id.values()))
@@ -63,7 +64,7 @@ async def test_request_password_reset_noops_silently_for_unknown_email():
     repos = make_repos(password_resets=password_resets)
     mailer = FakeMailer()
 
-    await request_password_reset(repos, mailer, "missing@example.com")
+    await request_password_reset(repos, mailer, "missing@example.com", frontend_origin=FRONTEND_ORIGIN)
 
     assert password_resets.resets_by_user_id == {}
     assert mailer.password_resets == []
@@ -74,7 +75,7 @@ async def test_request_password_reset_for_user_sends_mail_for_known_user_id():
     repos = make_repos(users={USER_ID: make_user()}, password_resets=password_resets)
     mailer = FakeMailer()
 
-    await request_password_reset_for_user(repos, mailer, USER_ID)
+    await request_password_reset_for_user(repos, mailer, USER_ID, frontend_origin=FRONTEND_ORIGIN)
 
     assert len(password_resets.resets_by_user_id) == 1
     assert password_resets.resets_by_user_id[USER_ID].user_id == USER_ID
@@ -87,7 +88,7 @@ async def test_request_password_reset_for_user_raises_for_unknown_user_id():
     mailer = FakeMailer()
 
     with pytest.raises(UserNotFoundError):
-        await request_password_reset_for_user(repos, mailer, "missing")
+        await request_password_reset_for_user(repos, mailer, "missing", frontend_origin=FRONTEND_ORIGIN)
 
 
 async def test_second_request_invalidates_the_first_outstanding_token():
@@ -95,10 +96,10 @@ async def test_second_request_invalidates_the_first_outstanding_token():
     repos = make_repos(users={USER_ID: make_user()}, password_resets=password_resets)
     mailer = FakeMailer()
 
-    await request_password_reset(repos, mailer, EMAIL)
+    await request_password_reset(repos, mailer, EMAIL, frontend_origin=FRONTEND_ORIGIN)
     first_token = mailer.password_resets[0][1].split("token=")[1]
 
-    await request_password_reset_for_user(repos, mailer, USER_ID)
+    await request_password_reset_for_user(repos, mailer, USER_ID, frontend_origin=FRONTEND_ORIGIN)
 
     assert await password_resets.get(first_token) is None
 

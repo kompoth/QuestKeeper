@@ -1,6 +1,7 @@
 import pytest
 
 from app.adapters.db.orm import UserRow
+from app.config import Settings
 from app.domain.models import UserRole
 from app.domain.security import hash_password
 
@@ -160,6 +161,7 @@ async def test_registration_disabled_blocks_register_but_not_invite_confirm(
     invite_token = invite_confirm_url.split("token=")[1]
 
     monkeypatch.setenv("REGISTRATION_ENABLED", "false")
+    Settings.settings_clear_cache()
 
     register_response = await async_client.post(
         "/auth/register", json={"name": "New User", "email": "newbie@example.com", "password": PASSWORD}
@@ -180,6 +182,7 @@ async def test_password_reset_disabled_blocks_public_routes_but_admin_override_s
     await async_client.post("/auth/login", json={"email": "admin@example.com", "password": PASSWORD})
 
     monkeypatch.setenv("PASSWORD_RESET_ENABLED", "false")
+    Settings.settings_clear_cache()
 
     recovery_response = await async_client.post("/auth/password-recovery", json={"email": EMAIL})
     assert recovery_response.status_code == 403

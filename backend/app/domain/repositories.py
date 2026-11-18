@@ -83,7 +83,7 @@ class EntityRepository(Protocol):
     async def clear_map(self, entity_id: EntityId, actor_id: UserId) -> None: ...
 
 
-class PermissionRepository(Protocol):
+class EntityPermissionRepository(Protocol):
     async def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:
         """A user's entity_id -> level grants within one world."""
         ...
@@ -95,7 +95,7 @@ class PermissionRepository(Protocol):
     async def revoke(self, user_id: UserId, entity_id: EntityId) -> None: ...
 
 
-class InviteRepository(Protocol):
+class WorldInviteRepository(Protocol):
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
 
     async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
@@ -167,8 +167,8 @@ class Repositories:
     users: UserRepository
     worlds: WorldRepository
     entities: EntityRepository
-    permissions: PermissionRepository
-    invites: InviteRepository
+    permissions: EntityPermissionRepository
+    invites: WorldInviteRepository
     sessions: SessionRepository
     password_resets: PasswordResetRepository
     pending_registrations: PendingRegistrationRepository

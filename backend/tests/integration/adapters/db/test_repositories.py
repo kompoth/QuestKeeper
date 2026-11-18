@@ -17,13 +17,13 @@ from app.adapters.db.orm import (
 )
 from app.adapters.db.repositories import (
     InviteNotFoundError,
+    SqlEntityPermissionRepository,
     SqlEntityRepository,
-    SqlInviteRepository,
     SqlPasswordResetRepository,
     SqlPendingRegistrationRepository,
-    SqlPermissionRepository,
     SqlSessionRepository,
     SqlUserRepository,
+    SqlWorldInviteRepository,
     SqlWorldRepository,
 )
 from app.domain.models import (
@@ -763,7 +763,7 @@ class TestSqlPendingRegistrationRepository:
         assert found.name == "Second Name"
 
 
-class TestSqlPermissionRepository:
+class TestSqlEntityPermissionRepository:
     async def test_get_grants_returns_mapping_for_user_in_world(self, db_session):
         db_session.add(make_user("u1"))
         await db_session.commit()
@@ -774,7 +774,7 @@ class TestSqlPermissionRepository:
         db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.WRITE))
         await db_session.commit()
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "u1")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "u1")
 
         assert grants == {"e1": PermissionLevel.WRITE}
 
@@ -791,7 +791,7 @@ class TestSqlPermissionRepository:
         db_session.add(EntityPermissionRow(user_id="u1", entity_id="e2", level=PermissionLevel.WRITE))
         await db_session.commit()
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "u1")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "u1")
 
         assert grants == {"e1": PermissionLevel.READ}
 
@@ -804,10 +804,10 @@ class TestSqlPermissionRepository:
         db_session.add(make_entity("e1", world_id="w1"))
         await db_session.commit()
 
-        await SqlPermissionRepository(db_session).grant("grantee", "e1", PermissionLevel.READ)
+        await SqlEntityPermissionRepository(db_session).grant("grantee", "e1", PermissionLevel.READ)
         await db_session.commit()
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "grantee")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "grantee")
         assert grants == {"e1": PermissionLevel.READ}
 
     async def test_grant_upserts_an_existing_grant(self, db_session):
@@ -821,10 +821,10 @@ class TestSqlPermissionRepository:
         db_session.add(EntityPermissionRow(user_id="grantee", entity_id="e1", level=PermissionLevel.READ))
         await db_session.commit()
 
-        await SqlPermissionRepository(db_session).grant("grantee", "e1", PermissionLevel.WRITE)
+        await SqlEntityPermissionRepository(db_session).grant("grantee", "e1", PermissionLevel.WRITE)
         await db_session.commit()
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "grantee")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "grantee")
         assert grants == {"e1": PermissionLevel.WRITE}
 
     async def test_revoke_removes_an_existing_grant(self, db_session):
@@ -838,10 +838,10 @@ class TestSqlPermissionRepository:
         db_session.add(EntityPermissionRow(user_id="grantee", entity_id="e1", level=PermissionLevel.WRITE))
         await db_session.commit()
 
-        await SqlPermissionRepository(db_session).revoke("grantee", "e1")
+        await SqlEntityPermissionRepository(db_session).revoke("grantee", "e1")
         await db_session.commit()
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "grantee")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "grantee")
         assert grants == {}
 
     async def test_revoke_is_a_no_op_when_no_grant_exists(self, db_session):
@@ -853,11 +853,11 @@ class TestSqlPermissionRepository:
         db_session.add(make_entity("e1", world_id="w1"))
         await db_session.commit()
 
-        await SqlPermissionRepository(db_session).revoke("grantee", "e1")
+        await SqlEntityPermissionRepository(db_session).revoke("grantee", "e1")
         await db_session.commit()
 
 
-class TestSqlInviteRepository:
+class TestSqlWorldInviteRepository:
     async def test_get_pending_for_user_excludes_accepted_invites(self, db_session):
         db_session.add(make_user("u1"))
         db_session.add(make_user("invitee"))
@@ -892,7 +892,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invites = await SqlInviteRepository(db_session).get_pending_for_user("invitee")
+        invites = await SqlWorldInviteRepository(db_session).get_pending_for_user("invitee")
 
         assert len(invites) == 1
         assert invites[0].world_id == "w1"
@@ -931,7 +931,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invites = await SqlInviteRepository(db_session).get_pending_for_email("a@example.com")
+        invites = await SqlWorldInviteRepository(db_session).get_pending_for_email("a@example.com")
 
         assert [invite.id for invite in invites] == ["i1"]
 
@@ -966,7 +966,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invites = await SqlInviteRepository(db_session).get_all_for_world("w1")
+        invites = await SqlWorldInviteRepository(db_session).get_all_for_world("w1")
 
         assert {invite.id for invite in invites} == {"i1", "i2"}
 
@@ -992,7 +992,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invite = await SqlInviteRepository(db_session).get_by_token("tok")
+        invite = await SqlWorldInviteRepository(db_session).get_by_token("tok")
 
         assert invite is not None
         assert invite.id == "i1"
@@ -1019,7 +1019,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invite = await SqlInviteRepository(db_session).get_by_token("tok")
+        invite = await SqlWorldInviteRepository(db_session).get_by_token("tok")
 
         assert invite is None
 
@@ -1046,7 +1046,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        invite = await SqlInviteRepository(db_session).get_by_token("tok")
+        invite = await SqlWorldInviteRepository(db_session).get_by_token("tok")
 
         assert invite is None
 
@@ -1083,7 +1083,7 @@ class TestSqlInviteRepository:
         )
         await db_session.commit()
 
-        await SqlInviteRepository(db_session).link_pending_to_user("a@example.com", "u1")
+        await SqlWorldInviteRepository(db_session).link_pending_to_user("a@example.com", "u1")
         await db_session.commit()
 
         pending_row = await db_session.get(WorldInviteRow, "i1")
@@ -1121,13 +1121,13 @@ class TestSqlInviteRepository:
             level=PermissionLevel.WRITE,
             accepted=False,
         )
-        await SqlInviteRepository(db_session).accept(invite)
+        await SqlWorldInviteRepository(db_session).accept(invite)
         await db_session.commit()
 
         invite_row = await db_session.get(WorldInviteRow, "i1")
         assert invite_row.accepted is True
 
-        grants = await SqlPermissionRepository(db_session).get_grants("w1", "invitee")
+        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "invitee")
         assert grants == {"e1": PermissionLevel.WRITE}
 
     async def test_accept_raises_when_no_matching_invite_exists(self, db_session):
@@ -1141,7 +1141,7 @@ class TestSqlInviteRepository:
         )
 
         with pytest.raises(InviteNotFoundError):
-            await SqlInviteRepository(db_session).accept(invite)
+            await SqlWorldInviteRepository(db_session).accept(invite)
 
     async def test_create_persists_a_new_invite(self, db_session):
         db_session.add(make_user("u1"))
@@ -1160,7 +1160,7 @@ class TestSqlInviteRepository:
             entity_id="e1",
             level=PermissionLevel.READ,
         )
-        await SqlInviteRepository(db_session).create(invite)
+        await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()
 
         row = await db_session.get(WorldInviteRow, "i1")
@@ -1198,7 +1198,7 @@ class TestSqlInviteRepository:
             entity_id="e2",
             level=PermissionLevel.WRITE,
         )
-        await SqlInviteRepository(db_session).create(invite)
+        await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()
 
         row = await db_session.get(WorldInviteRow, "original-id")

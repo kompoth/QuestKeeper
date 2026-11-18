@@ -5,13 +5,13 @@ from app.domain.repositories import Repositories
 from app.services.access import PermissionDeniedError, WorldNotFoundError
 from app.services.worlds import create_world, get_world, list_worlds, update_world
 from tests.unit.services.fakes import (
+    FakeEntityPermissionRepository,
     FakeEntityRepository,
-    FakeInviteRepository,
     FakePasswordResetRepository,
     FakePendingRegistrationRepository,
-    FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
+    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
 
@@ -26,8 +26,8 @@ def make_repos(*, world=None) -> Repositories:
         users=FakeUserRepository(),
         worlds=worlds,
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(),
-        invites=FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),
@@ -45,8 +45,8 @@ async def test_list_worlds_returns_owned_and_granted_worlds_but_not_others():
             granted_world_ids_by_user={OWNER_ID: {"w-granted"}},
         ),
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(),
-        invites=FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),
@@ -72,8 +72,8 @@ async def test_get_world_succeeds_for_a_user_with_any_grant_in_the_world():
         users=FakeUserRepository(),
         worlds=FakeWorldRepository(worlds_by_id={WORLD_ID: world}),
         entities=FakeEntityRepository(),
-        permissions=FakePermissionRepository(grants_by_user={OTHER_USER_ID: {"e1": PermissionLevel.READ}}),
-        invites=FakeInviteRepository(),
+        permissions=FakeEntityPermissionRepository(grants_by_user={OTHER_USER_ID: {"e1": PermissionLevel.READ}}),
+        invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),

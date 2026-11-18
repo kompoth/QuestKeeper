@@ -318,7 +318,7 @@ class SqlEntityRepository:
         row.updated_by = actor_id
 
 
-class SqlPermissionRepository:
+class SqlEntityPermissionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -447,7 +447,7 @@ class SqlPendingRegistrationRepository:
             await self._session.delete(row)
 
 
-class SqlInviteRepository:
+class SqlWorldInviteRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

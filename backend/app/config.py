@@ -1,43 +1,32 @@
-"""Env-driven configuration, one function per variable."""
+"""Env-driven configuration via pydantic-settings."""
 
-import os
-
-
-def get_frontend_origin() -> str:
-    return os.environ["FRONTEND_ORIGIN"]
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def get_cookie_secure() -> bool:
-    return os.environ.get("COOKIE_SECURE", "true").lower() != "false"
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
+    frontend_origin: str
+    cookie_secure: bool = True
+
+    database_url: str
+
+    smtp_host: str
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    smtp_from_address: str
+
+    registration_enabled: bool = True
+    password_reset_enabled: bool = True
 
 
-def get_smtp_host() -> str:
-    return os.environ["SMTP_HOST"]
+def get_settings() -> Settings:
+    """Returns the process-wide cached `Settings`, built once from the environment.
 
-
-def get_smtp_port() -> int:
-    return int(os.environ.get("SMTP_PORT", "587"))
-
-
-def get_smtp_username() -> str | None:
-    return os.environ.get("SMTP_USERNAME")
-
-
-def get_smtp_password() -> str | None:
-    return os.environ.get("SMTP_PASSWORD")
-
-
-def get_smtp_use_tls() -> bool:
-    return os.environ.get("SMTP_USE_TLS", "true").lower() != "false"
-
-
-def get_smtp_from_address() -> str:
-    return os.environ["SMTP_FROM_ADDRESS"]
-
-
-def get_registration_enabled() -> bool:
-    return os.environ.get("REGISTRATION_ENABLED", "true").lower() != "false"
-
-
-def get_password_reset_enabled() -> bool:
-    return os.environ.get("PASSWORD_RESET_ENABLED", "true").lower() != "false"
+    Tests that mutate the environment mid-run (e.g. toggling REGISTRATION_ENABLED) must call
+    `Settings.settings_clear_cache()` to force the next call here to rebuild from the new values -
+    see the autouse fixture in tests/integration/conftest.py.
+    """
+    return Settings.settings_cached()

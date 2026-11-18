@@ -1,6 +1,6 @@
 import os
 
-os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:5173")
+# FRONTEND_ORIGIN/SMTP_HOST/SMTP_FROM_ADDRESS defaults come from the parent conftest.py.
 os.environ.setdefault("COOKIE_SECURE", "false")
 
 import pytest

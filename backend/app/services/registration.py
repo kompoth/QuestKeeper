@@ -4,7 +4,6 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from app.config import get_frontend_origin
 from app.domain.mail import Mailer
 from app.domain.models import PendingRegistration, User, UserRole
 from app.domain.repositories import Repositories
@@ -16,7 +15,9 @@ from app.services.signup import SignupResult
 REGISTRATION_TOKEN_TTL = timedelta(hours=24)
 
 
-async def request_registration(repos: Repositories, mailer: Mailer, name: str, email: str, password: str) -> None:
+async def request_registration(  # noqa: PLR0913 -- repos/mailer/frontend_origin are distinct capability params
+    repos: Repositories, mailer: Mailer, name: str, email: str, password: str, *, frontend_origin: str
+) -> None:
     if await repos.users.get_by_email(email) is not None:
         raise EmailAlreadyRegisteredError(email)
 
@@ -28,7 +29,7 @@ async def request_registration(repos: Repositories, mailer: Mailer, name: str, e
         expires_at=datetime.now(UTC) + REGISTRATION_TOKEN_TTL,
     )
     pending = await repos.pending_registrations.create(pending)
-    confirm_url = f"{get_frontend_origin()}/register/confirm?token={pending.token}"
+    confirm_url = f"{frontend_origin}/register/confirm?token={pending.token}"
     await mailer.send_registration_confirmation(to_email=email, confirm_url=confirm_url)
 
 

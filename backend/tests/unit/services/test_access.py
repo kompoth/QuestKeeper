@@ -5,13 +5,13 @@ from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
 from app.services.access import FULL_ACCESS, EntityNotFoundError, get_entity_access
 from tests.unit.services.fakes import (
+    FakeEntityPermissionRepository,
     FakeEntityRepository,
-    FakeInviteRepository,
     FakePasswordResetRepository,
     FakePendingRegistrationRepository,
-    FakePermissionRepository,
     FakeSessionRepository,
     FakeUserRepository,
+    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
 
@@ -28,13 +28,13 @@ def make_repos(*, entity, world=None, ancestor_ids=(), grants=None) -> Repositor
         ancestor_ids_by_entity={entity.id: list(ancestor_ids)} if entity else {},
     )
     worlds = FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
-    permissions = FakePermissionRepository(grants_by_user={USER_ID: grants} if grants is not None else {})
+    permissions = FakeEntityPermissionRepository(grants_by_user={USER_ID: grants} if grants is not None else {})
     return Repositories(
         users=FakeUserRepository(),
         worlds=worlds,
         entities=entities,
         permissions=permissions,
-        invites=FakeInviteRepository(),
+        invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         pending_registrations=FakePendingRegistrationRepository(),

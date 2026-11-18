@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from app.config import get_frontend_origin
 from app.domain import permissions
 from app.domain.mail import Mailer
 from app.domain.models import EntityId, EntityPermission, PermissionLevel, UserId, World, WorldId, WorldInvite
@@ -50,8 +49,15 @@ async def revoke_permission(
     await repos.permissions.revoke(grantee_id, entity_id)
 
 
-async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer are distinct capability params, not data fields
-    repos: Repositories, mailer: Mailer, user_id: UserId, world_id: WorldId, invitee_email: str, grant: InviteGrant
+async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer/frontend_origin are distinct capability params
+    repos: Repositories,
+    mailer: Mailer,
+    user_id: UserId,
+    world_id: WorldId,
+    invitee_email: str,
+    grant: InviteGrant,
+    *,
+    frontend_origin: str,
 ) -> WorldInvite:
     world = await _require_owner(repos, user_id, world_id)
 
@@ -84,7 +90,7 @@ async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer are distinct 
             token_expires_at=datetime.now(UTC) + INVITE_TOKEN_TTL,
         )
         invite = await repos.invites.create(invite)
-        confirm_url = f"{get_frontend_origin()}/invites/confirm?token={token}"
+        confirm_url = f"{frontend_origin}/invites/confirm?token={token}"
         await mailer.send_new_user_invite(to_email=invitee_email, world_name=world.name, confirm_url=confirm_url)
 
     return invite

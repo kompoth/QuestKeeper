@@ -7,19 +7,9 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.adapters.db.repositories import (
-    SqlEntityRepository,
-    SqlInviteRepository,
-    SqlPasswordResetRepository,
-    SqlPendingRegistrationRepository,
-    SqlPermissionRepository,
-    SqlSessionRepository,
-    SqlUserRepository,
-    SqlWorldRepository,
-)
 from app.adapters.db.session import create_engine, create_session_factory
-from app.adapters.email import SmtpMailer
-from app.config import get_password_reset_enabled, get_registration_enabled
+from app.composition import build_mailer, build_repositories
+from app.config import Settings, get_settings
 from app.domain.mail import Mailer
 from app.domain.models import User, UserRole
 from app.domain.repositories import Repositories
@@ -31,7 +21,7 @@ CSRF_HEADER_NAME = "X-CSRF-Token"
 
 @lru_cache(maxsize=1)
 def _get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return create_session_factory(create_engine())
+    return create_session_factory(create_engine(get_settings().database_url))
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
@@ -46,24 +36,16 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
 
 
 def get_repositories(session: Annotated[AsyncSession, Depends(get_db_session)]) -> Repositories:
-    return Repositories(
-        users=SqlUserRepository(session),
-        worlds=SqlWorldRepository(session),
-        entities=SqlEntityRepository(session),
-        permissions=SqlPermissionRepository(session),
-        invites=SqlInviteRepository(session),
-        sessions=SqlSessionRepository(session),
-        password_resets=SqlPasswordResetRepository(session),
-        pending_registrations=SqlPendingRegistrationRepository(session),
-    )
+    return build_repositories(session)
 
 
 def get_mailer() -> Mailer:
-    return SmtpMailer()
+    return build_mailer()
 
 
 Repos = Annotated[Repositories, Depends(get_repositories)]
 MailerDep = Annotated[Mailer, Depends(get_mailer)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionToken = Annotated[str, Depends(auth.cookie_scheme)]
 
 
@@ -82,12 +64,12 @@ def require_csrf(request: Request) -> None:
 
 
 def require_registration_enabled() -> None:
-    if not get_registration_enabled():
+    if not get_settings().registration_enabled:
         raise HTTPException(status_code=403, detail="Registration is currently disabled")
 
 
 def require_password_reset_enabled() -> None:
-    if not get_password_reset_enabled():
+    if not get_settings().password_reset_enabled:
         raise HTTPException(status_code=403, detail="Password reset is currently disabled")
 
 

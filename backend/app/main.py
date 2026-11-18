@@ -9,13 +9,13 @@ from app.api.routers.auth import router as auth_router
 from app.api.routers.entities import router as entities_router
 from app.api.routers.sharing import invites_router, permissions_router
 from app.api.routers.worlds import router as worlds_router
-from app.config import get_frontend_origin
+from app.config import get_settings
 
 app = FastAPI(title="Questkeeper")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_frontend_origin()],
+    allow_origins=[get_settings().frontend_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Content-Type", CSRF_HEADER_NAME],

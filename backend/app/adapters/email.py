@@ -4,17 +4,25 @@ from email.message import EmailMessage
 
 import aiosmtplib
 
-from app.config import (
-    get_smtp_from_address,
-    get_smtp_host,
-    get_smtp_password,
-    get_smtp_port,
-    get_smtp_use_tls,
-    get_smtp_username,
-)
-
 
 class SmtpMailer:
+    def __init__(  # noqa: PLR0913 -- distinct SMTP connection/identity params, not data fields
+        self,
+        *,
+        host: str,
+        port: int,
+        username: str | None,
+        password: str | None,
+        use_tls: bool,
+        from_address: str,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._username = username
+        self._password = password
+        self._use_tls = use_tls
+        self._from_address = from_address
+
     async def send_existing_user_invite(self, *, to_email: str, world_name: str) -> None:
         message = self._build_message(
             to_email,
@@ -52,7 +60,7 @@ class SmtpMailer:
 
     def _build_message(self, to_email: str, *, subject: str, body: str) -> EmailMessage:
         message = EmailMessage()
-        message["From"] = get_smtp_from_address()
+        message["From"] = self._from_address
         message["To"] = to_email
         message["Subject"] = subject
         message.set_content(body)
@@ -61,9 +69,9 @@ class SmtpMailer:
     async def _send(self, message: EmailMessage) -> None:
         await aiosmtplib.send(
             message,
-            hostname=get_smtp_host(),
-            port=get_smtp_port(),
-            username=get_smtp_username(),
-            password=get_smtp_password(),
-            start_tls=get_smtp_use_tls(),
+            hostname=self._host,
+            port=self._port,
+            username=self._username,
+            password=self._password,
+            start_tls=self._use_tls,
         )

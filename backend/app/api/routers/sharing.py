@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Depends, Response, status
 
 from app.api.cookies import set_session_cookies
-from app.api.dependencies import CurrentUser, MailerDep, Repos, require_csrf
+from app.api.dependencies import CurrentUser, MailerDep, Repos, SettingsDep, require_csrf
 from app.api.schemas import ConfirmInviteRequest, CreateInviteRequest, InviteSummary, PendingInviteOut, UserOut
 from app.domain.models import EntityId, EntityPermission, User, UserId, WorldId
 from app.services.sharing import (
@@ -38,11 +38,18 @@ async def revoke(world_id: WorldId, grantee_id: UserId, entity_id: EntityId, use
 
 
 @permissions_router.post("/invites", dependencies=[Depends(require_csrf)])
-async def invite(
-    world_id: WorldId, body: CreateInviteRequest, user: CurrentUser, repos: Repos, mailer: MailerDep
+async def invite(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
+    world_id: WorldId,
+    body: CreateInviteRequest,
+    user: CurrentUser,
+    repos: Repos,
+    mailer: MailerDep,
+    settings: SettingsDep,
 ) -> InviteSummary:
     grant_ = InviteGrant(entity_id=body.entity_id, level=body.level)
-    invite_ = await create_invite(repos, mailer, user.id, world_id, body.invitee_email, grant_)
+    invite_ = await create_invite(
+        repos, mailer, user.id, world_id, body.invitee_email, grant_, frontend_origin=settings.frontend_origin
+    )
     return InviteSummary.from_invite(invite_)
 
 

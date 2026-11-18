@@ -9,6 +9,7 @@ from app.api.dependencies import (
     MailerDep,
     Repos,
     SessionToken,
+    SettingsDep,
     require_admin,
     require_csrf,
     require_password_reset_enabled,
@@ -54,8 +55,10 @@ async def me(user: CurrentUser) -> User:
 
 
 @router.post("/register", dependencies=[Depends(require_registration_enabled)])
-async def register(body: RegisterRequest, repos: Repos, mailer: MailerDep) -> None:
-    await request_registration(repos, mailer, body.name, body.email, body.password)
+async def register(body: RegisterRequest, repos: Repos, mailer: MailerDep, settings: SettingsDep) -> None:
+    await request_registration(
+        repos, mailer, body.name, body.email, body.password, frontend_origin=settings.frontend_origin
+    )
 
 
 @router.post("/register/confirm", response_model=UserOut, dependencies=[Depends(require_registration_enabled)])
@@ -66,8 +69,10 @@ async def register_confirm(body: ConfirmRegistrationRequest, response: Response,
 
 
 @router.post("/password-recovery", dependencies=[Depends(require_password_reset_enabled)])
-async def request_password_recovery(body: RequestPasswordResetRequest, repos: Repos, mailer: MailerDep) -> None:
-    await request_password_reset(repos, mailer, body.email)
+async def request_password_recovery(
+    body: RequestPasswordResetRequest, repos: Repos, mailer: MailerDep, settings: SettingsDep
+) -> None:
+    await request_password_reset(repos, mailer, body.email, frontend_origin=settings.frontend_origin)
 
 
 @router.post("/password-reset", dependencies=[Depends(require_password_reset_enabled)])
@@ -76,5 +81,5 @@ async def reset_password_route(body: ResetPasswordRequest, repos: Repos) -> None
 
 
 @router.post("/admin/password-reset/{user_id}", dependencies=[Depends(require_admin), Depends(require_csrf)])
-async def admin_trigger_password_reset(user_id: UserId, repos: Repos, mailer: MailerDep) -> None:
-    await request_password_reset_for_user(repos, mailer, user_id)
+async def admin_trigger_password_reset(user_id: UserId, repos: Repos, mailer: MailerDep, settings: SettingsDep) -> None:
+    await request_password_reset_for_user(repos, mailer, user_id, frontend_origin=settings.frontend_origin)

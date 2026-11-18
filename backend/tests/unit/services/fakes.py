@@ -118,7 +118,7 @@ class FakeEntityRepository:
 
 
 @dataclass
-class FakePermissionRepository:
+class FakeEntityPermissionRepository:
     grants_by_user: dict[UserId, Mapping[EntityId, PermissionLevel]] = field(default_factory=dict)
 
     async def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:  # noqa: ARG002
@@ -136,7 +136,7 @@ class FakePermissionRepository:
 
 
 @dataclass
-class FakeInviteRepository:
+class FakeWorldInviteRepository:
     invites: list[WorldInvite] = field(default_factory=list)
 
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]:
