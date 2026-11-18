@@ -1,5 +1,7 @@
 export interface World {
   id: string
+  ownerId: string
   name: string
-  description: string
+  description: string | null
+  pic: string | null
 }

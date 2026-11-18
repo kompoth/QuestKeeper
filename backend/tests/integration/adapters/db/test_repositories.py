@@ -51,7 +51,7 @@ def make_user(user_id="u1", email=None) -> UserRow:
 
 
 def make_world(world_id="w1", owner_id="u1") -> WorldRow:
-    return WorldRow(id=world_id, owner_id=owner_id, name="World")
+    return WorldRow(id=world_id, owner_id=owner_id, name="World", created_at=datetime.now(UTC))
 
 
 def make_entity(entity_id, world_id="w1", parent_id=None, created_by="u1") -> EntityRow:

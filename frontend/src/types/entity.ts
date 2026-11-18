@@ -1,31 +1,28 @@
-export interface EntityMarker {
+export interface MapPin {
   entityId: string
   x: number
   y: number
 }
 
 export interface EntityMapContent {
-  image: string
-  markers: EntityMarker[]
+  pic: string
+  pins: MapPin[]
 }
 
 export interface EntityArticleContent {
-  content: string
+  markdown: string
 }
 
 export interface Entity {
   id: string
   worldId: string
-  parentId?: string
-  title: string
-  article?: EntityArticleContent
-  map?: EntityMapContent
-}
-
-export interface EntitySummary {
-  id: string
-  worldId: string
-  parentId?: string
-  title: string
-  hasMap: boolean
+  name: string
+  parent: string | null
+  children: string[]
+  article: EntityArticleContent | null
+  map: EntityMapContent | null
+  createdAt: string | null
+  updatedAt: string | null
+  createdBy: string | null
+  updatedBy: string | null
 }

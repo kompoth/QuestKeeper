@@ -34,6 +34,7 @@ class WorldRow(Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     pic: Mapped[str | None] = mapped_column(String(512), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class EntityRow(Base):

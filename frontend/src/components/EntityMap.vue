@@ -12,17 +12,17 @@
         alt=""
         class="map-image"
         draggable="false"
-        :src="map.image"
+        :src="map.pic"
         @load="onImageLoad"
       >
 
       <button
-        v-for="marker in map.markers"
-        :key="marker.entityId"
+        v-for="pin in map.pins"
+        :key="pin.entityId"
         class="map-marker"
-        :style="{ left: `${marker.x}%`, top: `${marker.y}%` }"
+        :style="{ left: `${pin.x}%`, top: `${pin.y}%` }"
         type="button"
-        @click="emit('open', marker.entityId)"
+        @click="emit('open', pin.entityId)"
       >
         <v-icon icon="mdi-compass-rose" size="64" />
       </button>

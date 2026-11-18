@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.adapters.db.orm import UserRow, WorldRow
@@ -151,7 +153,7 @@ async def test_create_root_entity_requires_world_ownership(async_client, db_sess
     db_session.add(
         UserRow(id="owner2", name="Owner2", email="owner2@example.com", hashed_password="x", role=UserRole.MEMBER)
     )
-    db_session.add(WorldRow(id="w2", owner_id="owner2", name="World 2"))
+    db_session.add(WorldRow(id="w2", owner_id="owner2", name="World 2", created_at=datetime.now(UTC)))
     await db_session.commit()
     await _login(async_client, db_session, user_id="other")
 

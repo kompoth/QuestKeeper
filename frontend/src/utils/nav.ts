@@ -1,7 +1,6 @@
-import type { EntitySummary } from '@/types/entity'
+import type { Entity } from '@/types/entity'
 import type { NavItem } from '@/types/nav-item'
 import type { InjectionKey } from 'vue'
-import { listChildEntities } from '@/data/entities'
 
 export interface NavItemHandlers {
   onRename: (entityId: string) => void
@@ -11,16 +10,23 @@ export interface NavItemHandlers {
 
 export const refreshNavItemsKey: InjectionKey<() => Promise<void>> = Symbol('refreshNavItems')
 
-export async function toNavItem (worldId: string, entity: EntitySummary, handlers: NavItemHandlers): Promise<NavItem> {
-  const children = await listChildEntities(entity.id)
+export function toNavItem (
+  worldId: string,
+  entity: Entity,
+  entitiesById: Map<string, Entity>,
+  handlers: NavItemHandlers,
+): NavItem {
+  const children = entity.children
+    .map(id => entitiesById.get(id))
+    .filter((child): child is Entity => child !== undefined)
 
   return {
     id: entity.id,
-    title: entity.title,
+    title: entity.name,
     to: `/w/${worldId}/e/${entity.id}`,
-    icon: entity.hasMap ? 'mdi-map' : 'mdi-file-document-outline',
+    icon: entity.map ? 'mdi-map' : 'mdi-file-document-outline',
     children: children.length > 0
-      ? await Promise.all(children.map(child => toNavItem(worldId, child, handlers)))
+      ? children.map(child => toNavItem(worldId, child, entitiesById, handlers))
       : undefined,
     // TODO: tailor which actions apply per entity (e.g. omit "Add page" once it already has one)
     actions: [

@@ -24,7 +24,7 @@ async def _create_owned_world(db_session, world_id="w1", owner_id="owner") -> No
     db_session.add(
         UserRow(id=owner_id, name="Owner", email="owner@example.com", hashed_password="x", role=UserRole.MEMBER)
     )
-    db_session.add(WorldRow(id=world_id, owner_id=owner_id, name="World"))
+    db_session.add(WorldRow(id=world_id, owner_id=owner_id, name="World", created_at=datetime.now(UTC)))
     await db_session.commit()
 
 

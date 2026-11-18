@@ -68,6 +68,7 @@ class World(BaseModel):
     name: str
     description: str | None = None
     pic: str | None = None
+    created_at: datetime | None = None
 
 
 class PermissionLevel(StrEnum):

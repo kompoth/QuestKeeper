@@ -35,7 +35,7 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
             raise
 
 
-def get_repositories(session: Annotated[AsyncSession, Depends(get_db_session)]) -> Repositories:
+def get_repositories(session: Annotated[AsyncSession, Depends(get_db_session, scope="function")]) -> Repositories:
     return build_repositories(session)
 
 

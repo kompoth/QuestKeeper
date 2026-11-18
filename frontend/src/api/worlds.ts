@@ -1,0 +1,38 @@
+import type { World } from '@/types/world'
+import { ApiError, apiFetch } from '@/api/client'
+
+interface WorldDto {
+  id: string
+  owner_id: string
+  name: string
+  description: string | null
+  pic: string | null
+}
+
+function toWorld (dto: WorldDto): World {
+  return { id: dto.id, ownerId: dto.owner_id, name: dto.name, description: dto.description, pic: dto.pic }
+}
+
+export async function listWorlds (): Promise<World[]> {
+  const dtos = await apiFetch<WorldDto[]>('/worlds')
+  return dtos.map(dto => toWorld(dto))
+}
+
+export async function getWorld (id: string): Promise<World | undefined> {
+  try {
+    return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`))
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return undefined
+    }
+    throw error
+  }
+}
+
+export async function createWorld (name: string, description: string): Promise<World> {
+  return toWorld(await apiFetch<WorldDto>('/worlds', { method: 'POST', body: { name, description } }))
+}
+
+export async function updateWorld (id: string, name: string, description: string): Promise<World> {
+  return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`, { method: 'PATCH', body: { name, description } }))
+}

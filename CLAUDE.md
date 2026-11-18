@@ -40,6 +40,8 @@ Commands (run from `backend/`):
 - Type check: `uv run ty check .`
 - Run unit tests: `uv run pytest tests/unit`
 - Run integration tests (requires `DATABASE_URL` pointing at a reachable MySQL instance): `uv run pytest tests/integration`
+- The integration suite calls `Base.metadata.create_all`/`drop_all` on whatever `DATABASE_URL` resolves to (from `.env` if not overridden) — never point it at a DB used for manual/dev testing, or the suite's teardown wipes it.
+- Local convenience: a disposable `questkeeper-mysql-test` container (mysql:8, db `questkeeper_test`, port 3308) mirrors CI's isolated service container; run tests against it with `DATABASE_URL=mysql+aiomysql://root:root@127.0.0.1:3308/questkeeper_test uv run pytest tests/integration`.
 
 ### Domain model (`app/core/models.py`)
 

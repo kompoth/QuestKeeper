@@ -25,7 +25,13 @@
 
       <div class="entity-content flex-1-1-100 overflow-y-auto">
         <EntityMap v-if="entity.map" :map="entity.map" @open="openEntity" />
-        <EntityArticle v-else-if="entity.article" :editable="entityEditable" :model-value="entity.article.content" />
+
+        <EntityArticle
+          v-else
+          :editable="entityEditable"
+          :model-value="entity.article?.markdown ?? ''"
+          @update:model-value="handleArticleChange"
+        />
       </div>
     </template>
   </v-container>
@@ -33,13 +39,15 @@
 
 <script lang="ts" setup>
   import type { Entity } from '@/types/entity'
-  import { computed, inject, ref, watchEffect } from 'vue'
+  import { computed, inject, onBeforeUnmount, ref, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
+  import { getEntity, renameEntity, setArticle } from '@/api/entities'
   import EntityArticle from '@/components/EntityArticle.vue'
   import EntityMap from '@/components/EntityMap.vue'
   import { useRenameDialog } from '@/composables/useRenameDialog'
-  import { getEntity, renameEntity } from '@/data/entities'
   import { refreshNavItemsKey } from '@/utils/nav'
+
+  const ARTICLE_SAVE_DEBOUNCE_MS = 500
 
   interface BreadcrumbItem {
     title: string
@@ -50,6 +58,8 @@
   const route = useRoute()
   const router = useRouter()
 
+  const worldId = computed(() => route.params.worldId as string)
+
   const entityEditable = ref(false)
 
   const { openRenameDialog } = useRenameDialog()
@@ -59,14 +69,13 @@
   const entityPath = ref<Entity[]>([])
 
   const breadcrumbItems = computed(() => {
-    const worldId = route.params.worldId as string
     const items: BreadcrumbItem[] = []
 
     for (const [index, pathEntity] of entityPath.value.entries()) {
       items.push(
         index === entityPath.value.length - 1
-          ? { title: pathEntity.title, disabled: true }
-          : { title: pathEntity.title, to: `/w/${worldId}/e/${pathEntity.id}` },
+          ? { title: pathEntity.name, disabled: true }
+          : { title: pathEntity.name, to: `/w/${worldId.value}/e/${pathEntity.id}` },
       )
     }
 
@@ -76,8 +85,8 @@
   async function getEntityPath (leaf: Entity): Promise<Entity[]> {
     const path = [leaf]
     let current = leaf
-    while (current.parentId) {
-      const parent = await getEntity(current.parentId)
+    while (current.parent) {
+      const parent = await getEntity(worldId.value, current.parent)
       if (!parent) break
       path.unshift(parent)
       current = parent
@@ -86,24 +95,40 @@
   }
 
   async function refreshEntity () {
-    entity.value = await getEntity(route.params.entityId as string)
+    entity.value = await getEntity(worldId.value, route.params.entityId as string)
     entityPath.value = entity.value ? await getEntityPath(entity.value) : []
   }
 
   watchEffect(refreshEntity)
 
   function openEntity (entityId: string) {
-    router.push(`/w/${route.params.worldId}/e/${entityId}`)
+    router.push(`/w/${worldId.value}/e/${entityId}`)
   }
 
   async function startRename () {
     if (!entity.value) return
-    const title = await openRenameDialog(entity.value.title)
+    const title = await openRenameDialog(entity.value.name)
     if (title === undefined) return
-    await renameEntity(entity.value.id, title)
+    await renameEntity(worldId.value, entity.value.id, title)
     await refreshEntity()
     await refreshNavItems?.()
   }
+
+  let articleSaveTimeout: ReturnType<typeof setTimeout> | undefined
+
+  function handleArticleChange (markdown: string) {
+    if (!entity.value) return
+    const entityId = entity.value.id
+    const currentWorldId = worldId.value
+    clearTimeout(articleSaveTimeout)
+    articleSaveTimeout = setTimeout(() => {
+      setArticle(currentWorldId, entityId, markdown)
+    }, ARTICLE_SAVE_DEBOUNCE_MS)
+  }
+
+  onBeforeUnmount(() => {
+    clearTimeout(articleSaveTimeout)
+  })
 </script>
 
 <style scoped>

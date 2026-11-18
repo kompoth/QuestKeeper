@@ -78,7 +78,14 @@ def _invite_from_row(row: WorldInviteRow) -> WorldInvite:
 
 
 def _world_from_row(row: WorldRow) -> World:
-    return World(id=row.id, owner_id=row.owner_id, name=row.name, description=row.description, pic=row.pic)
+    return World(
+        id=row.id,
+        owner_id=row.owner_id,
+        name=row.name,
+        description=row.description,
+        pic=row.pic,
+        created_at=row.created_at,
+    )
 
 
 def _entity_from_row(row: EntityRow, children: Sequence[EntityId]) -> Entity:
@@ -160,7 +167,8 @@ class SqlWorldRepository:
         for row in granted.scalars():
             worlds_by_id.setdefault(row.id, row)
 
-        return [_world_from_row(row) for row in worlds_by_id.values()]
+        worlds = [_world_from_row(row) for row in worlds_by_id.values()]
+        return sorted(worlds, key=lambda world: world.created_at or datetime.min.replace(tzinfo=UTC))
 
     async def create(self, world: World) -> None:
         self._session.add(
@@ -169,6 +177,7 @@ class SqlWorldRepository:
                 owner_id=world.owner_id,
                 name=world.name,
                 description=world.description,
+                created_at=world.created_at or datetime.now(UTC),
                 pic=world.pic,
             )
         )
@@ -211,6 +220,7 @@ class SqlEntityRepository:
             .where(EntityRow.world_id == world_id, EntityRow.deleted_at.is_(None))
             .options(selectinload(EntityRow.article), selectinload(EntityRow.map).selectinload(MapRow.pins))
             .execution_options(populate_existing=True)
+            .order_by(EntityRow.created_at)
         )
         rows = result.scalars().all()
 

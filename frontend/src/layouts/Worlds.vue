@@ -63,26 +63,6 @@
         />
 
         <v-textarea v-model="worldFormDescription" label="Description" variant="outlined" />
-
-        <v-divider class="my-4" />
-
-        <div class="text-subtitle-1 text-error font-weight-bold mb-2">Danger zone</div>
-
-        <p class="text-body-2 mb-4">
-          Deleting <strong>{{ settingsWorld?.name }}</strong> is irreversible. Type its name below to confirm.
-        </p>
-
-        <v-text-field v-model="deleteConfirmation" label="World name" variant="outlined" />
-
-        <v-btn
-          block
-          color="error"
-          :disabled="!canDeleteWorld"
-          variant="flat"
-          @click="handleDeleteWorld"
-        >
-          Delete this world
-        </v-btn>
       </v-card-text>
 
       <v-card-actions>
@@ -96,45 +76,48 @@
 
 <script lang="ts" setup>
   import type { World } from '@/types/world'
-  import { computed, ref } from 'vue'
+  import { onMounted, ref } from 'vue'
   import { useRouter } from 'vue-router'
+  import { createWorld, listWorlds, updateWorld } from '@/api/worlds'
   import NavBar from '@/components/NavBar.vue'
+  import { useAuth } from '@/composables/useAuth'
   import { useWorldFormDialog } from '@/composables/useWorldFormDialog'
-  import { createWorld, deleteWorld, listWorlds, updateWorld } from '@/data/worlds'
 
-  const worlds = ref(listWorlds())
+  const worlds = ref<World[]>([])
+
+  let worldsRequestId = 0
+
+  async function refreshWorlds () {
+    const requestId = ++worldsRequestId
+    const result = await listWorlds()
+    if (requestId !== worldsRequestId) return // a newer refresh already started, discard this stale result
+    worlds.value = result
+  }
+
+  onMounted(refreshWorlds)
 
   const router = useRouter()
+  const { logout } = useAuth()
 
   const { worldFormOpen, worldFormName, worldFormDescription, openWorldFormDialog, confirmWorldForm, cancelWorldForm } = useWorldFormDialog()
 
   const settingsWorld = ref<World>()
-  const deleteConfirmation = ref('')
 
-  const canDeleteWorld = computed(() => deleteConfirmation.value !== '' && deleteConfirmation.value === settingsWorld.value?.name)
-
-  function handleCreateWorld () {
-    createWorld('New World', '')
-    worlds.value = listWorlds()
+  async function handleCreateWorld () {
+    await createWorld('New World', '')
+    await refreshWorlds()
   }
 
   async function handleSettings (world: World) {
     settingsWorld.value = world
-    deleteConfirmation.value = ''
     const result = await openWorldFormDialog(world)
     if (result === undefined) return
-    updateWorld(world.id, result.name, result.description)
-    worlds.value = listWorlds()
+    await updateWorld(world.id, result.name, result.description)
+    await refreshWorlds()
   }
 
-  function handleDeleteWorld () {
-    if (!settingsWorld.value || !canDeleteWorld.value) return
-    deleteWorld(settingsWorld.value.id)
-    worlds.value = listWorlds()
-    cancelWorldForm()
-  }
-
-  function handleLogout () {
+  async function handleLogout () {
+    await logout()
     router.push('/login')
   }
 </script>
