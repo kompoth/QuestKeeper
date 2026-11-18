@@ -6,23 +6,11 @@ os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:5173")
 os.environ.setdefault("SMTP_HOST", "localhost")
 os.environ.setdefault("SMTP_FROM_ADDRESS", "test@example.com")
 
-import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 
 from app.adapters.db.orm import Base
-from app.config import Settings, get_settings
-
-
-@pytest.fixture(autouse=True)
-def _reset_settings_cache():
-    """get_settings() is process-cached in production; tests that monkeypatch env vars (e.g. the
-    REGISTRATION_ENABLED/PASSWORD_RESET_ENABLED toggle tests) need a clean cache before and after,
-    or a value set mid-test would leak into whichever test runs next.
-    """
-    Settings.settings_clear_cache()
-    yield
-    Settings.settings_clear_cache()
+from app.config import get_settings
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

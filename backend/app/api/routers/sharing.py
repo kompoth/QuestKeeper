@@ -50,13 +50,18 @@ async def invite(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capabil
     invite_ = await create_invite(
         repos, mailer, user.id, world_id, body.invitee_email, grant_, frontend_origin=settings.frontend_origin
     )
-    return InviteSummary.from_invite(invite_)
+    # The invite's invitee always resolves to body.invitee_email - no need to re-fetch the user.
+    return InviteSummary.from_invite(invite_, body.invitee_email)
 
 
 @permissions_router.get("/invites")
 async def list_invites(world_id: WorldId, user: CurrentUser, repos: Repos) -> Sequence[InviteSummary]:
     invites = await list_invites_for_world(repos, user.id, world_id)
-    return [InviteSummary.from_invite(invite_) for invite_ in invites]
+    summaries = []
+    for invite_ in invites:
+        invitee = await repos.users.get_by_id(invite_.invitee_id)
+        summaries.append(InviteSummary.from_invite(invite_, invitee.email if invitee else ""))
+    return summaries
 
 
 @invites_router.get("")

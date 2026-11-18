@@ -8,8 +8,20 @@ from uuid import uuid4
 
 from app.domain import permissions
 from app.domain.mail import Mailer
-from app.domain.models import EntityId, EntityPermission, PermissionLevel, UserId, World, WorldId, WorldInvite
+from app.domain.models import (
+    EntityId,
+    EntityPermission,
+    PermissionLevel,
+    User,
+    UserId,
+    UserRole,
+    UserStatus,
+    World,
+    WorldId,
+    WorldInvite,
+)
 from app.domain.repositories import Repositories
+from app.domain.security import hash_password
 from app.services.access import EntityNotFoundError, InviteNotFoundError, PermissionDeniedError, WorldNotFoundError
 
 INVITE_TOKEN_TTL = timedelta(days=7)
@@ -66,33 +78,42 @@ async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer/frontend_orig
         raise EntityNotFoundError(grant.entity_id)
 
     invitee = await repos.users.get_by_email(invitee_email)
-    if invitee is not None:
+
+    if invitee is not None and invitee.status != UserStatus.PENDING:
         invite = WorldInvite(
-            id=str(uuid4()),
-            world_id=world_id,
-            invitee_id=invitee.id,
-            invitee_email=invitee_email,
-            entity_id=grant.entity_id,
-            level=grant.level,
+            id=str(uuid4()), world_id=world_id, invitee_id=invitee.id, entity_id=grant.entity_id, level=grant.level
         )
         invite = await repos.invites.create(invite)
         await mailer.send_existing_user_invite(to_email=invitee_email, world_name=world.name)
-    else:
-        token = secrets.token_urlsafe(32)
-        invite = WorldInvite(
-            id=str(uuid4()),
-            world_id=world_id,
-            invitee_id=None,
-            invitee_email=invitee_email,
-            entity_id=grant.entity_id,
-            level=grant.level,
-            confirmation_token=token,
-            token_expires_at=datetime.now(UTC) + INVITE_TOKEN_TTL,
-        )
-        invite = await repos.invites.create(invite)
-        confirm_url = f"{frontend_origin}/invites/confirm?token={token}"
-        await mailer.send_new_user_invite(to_email=invitee_email, world_name=world.name, confirm_url=confirm_url)
+        return invite
 
+    if invitee is None:
+        placeholder = User(
+            id=str(uuid4()),
+            name=invitee_email,
+            email=invitee_email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            role=UserRole.MEMBER,
+            status=UserStatus.PENDING,
+        )
+        await repos.users.create(placeholder)
+        invitee_id = placeholder.id
+    else:
+        invitee_id = invitee.id
+
+    token = secrets.token_urlsafe(32)
+    invite = WorldInvite(
+        id=str(uuid4()),
+        world_id=world_id,
+        invitee_id=invitee_id,
+        entity_id=grant.entity_id,
+        level=grant.level,
+        confirmation_token=token,
+        token_expires_at=datetime.now(UTC) + INVITE_TOKEN_TTL,
+    )
+    invite = await repos.invites.create(invite)
+    confirm_url = f"{frontend_origin}/invites/confirm?token={token}"
+    await mailer.send_new_user_invite(to_email=invitee_email, world_name=world.name, confirm_url=confirm_url)
     return invite
 
 

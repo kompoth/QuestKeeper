@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.models import User, UserRole, WorldInvite
+from app.domain.models import User, UserRole, UserStatus, WorldInvite
 from app.domain.repositories import Repositories
 from app.services.access import EmailAlreadyRegisteredError, InviteTokenNotFoundError
 from app.services.signup import confirm_invite_signup
@@ -10,7 +10,8 @@ from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
     FakePasswordResetRepository,
-    FakePendingRegistrationRepository,
+    FakeRegistrationConfirmationRepository,
+    FakeRuntimeSettingsRepository,
     FakeSessionRepository,
     FakeUserRepository,
     FakeWorldInviteRepository,
@@ -30,16 +31,22 @@ def make_repos(*, invites=None, users=None) -> Repositories:
         invites=invites if invites is not None else FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
 
-def make_invite(invite_id: str, world_id: str, *, token: str | None = None, email: str = EMAIL) -> WorldInvite:
+def make_pending_user(user_id: str, *, email: str = EMAIL) -> User:
+    return User(
+        id=user_id, name=email, email=email, hashed_password="x", role=UserRole.MEMBER, status=UserStatus.PENDING
+    )
+
+
+def make_invite(invite_id: str, world_id: str, invitee_id: str, *, token: str | None = None) -> WorldInvite:
     return WorldInvite(
         id=invite_id,
         world_id=world_id,
-        invitee_id=None,
-        invitee_email=email,
+        invitee_id=invitee_id,
         entity_id="e1",
         level="read",
         confirmation_token=token,
@@ -47,25 +54,30 @@ def make_invite(invite_id: str, world_id: str, *, token: str | None = None, emai
     )
 
 
-async def test_confirm_invite_signup_creates_user_accepts_invite_and_logs_in():
+async def test_confirm_invite_signup_claims_the_pending_user_accepts_invite_and_logs_in():
     token = "tok"  # noqa: S105
-    targeted_invite = make_invite("i1", "w1", token=token)
-    other_pending_invite = make_invite("i2", "w2")
-    invites = FakeWorldInviteRepository(invites=[targeted_invite, other_pending_invite])
-    repos = make_repos(invites=invites)
+    targeted_invite = make_invite("i1", "w1", "u1", token=token)
+    # Already resolved to the same placeholder at invite-creation time - no backfill needed.
+    other_invite = make_invite("i2", "w2", "u1")
+    invites = FakeWorldInviteRepository(invites=[targeted_invite, other_invite])
+    repos = make_repos(invites=invites, users={"u1": make_pending_user("u1")})
 
     result = await confirm_invite_signup(repos, token, "New User", PASSWORD)
 
+    assert result.user.id == "u1"
     assert result.user.email == EMAIL
-    assert result.session.user_id == result.user.id
+    assert result.user.name == "New User"
+    assert result.user.status == UserStatus.ACTIVE
+    assert result.session.user_id == "u1"
 
-    # FakeWorldInviteRepository.accept() appends rather than mutating in place (matching the real SQL
-    # adapter's semantics would require a DB-backed test); take the last i1 entry, which is the one
-    # accept_invite() just passed to accept().
+    claimed = await repos.users.get_by_id("u1")
+    assert claimed is not None
+    assert claimed.status == UserStatus.ACTIVE
+    assert claimed.name == "New User"
+
     invites_by_id = {invite.id: invite for invite in invites.invites}
-    assert invites_by_id["i1"].invitee_id == result.user.id
-    # Generalized backfill: the OTHER pending invite for this email also gets linked, not just i1's.
-    assert invites_by_id["i2"].invitee_id == result.user.id
+    assert invites_by_id["i1"].invitee_id == "u1"
+    assert invites_by_id["i2"].invitee_id == "u1"
 
 
 async def test_confirm_invite_signup_raises_when_token_unknown_or_expired():
@@ -75,14 +87,13 @@ async def test_confirm_invite_signup_raises_when_token_unknown_or_expired():
         await confirm_invite_signup(repos, "missing-token", "New User", PASSWORD)
 
 
-async def test_confirm_invite_signup_raises_when_email_already_registered():
+async def test_confirm_invite_signup_raises_when_user_already_active():
     token = "tok"  # noqa: S105
-    invite = make_invite("i1", "w1", token=token)
-    existing_user = User(id="existing", name="Existing", email=EMAIL, hashed_password="x", role=UserRole.MEMBER)
-    users = FakeUserRepository(users_by_id={"existing": existing_user})
-    repos = make_repos(invites=FakeWorldInviteRepository(invites=[invite]), users=users.users_by_id)
+    active_user = User(id="u1", name="Existing", email=EMAIL, hashed_password="x", role=UserRole.MEMBER)
+    invite = make_invite("i1", "w1", "u1", token=token)
+    repos = make_repos(invites=FakeWorldInviteRepository(invites=[invite]), users={"u1": active_user})
 
     with pytest.raises(EmailAlreadyRegisteredError):
         await confirm_invite_signup(repos, token, "New User", PASSWORD)
 
-    assert users.users_by_id == {"existing": existing_user}
+    assert await repos.users.get_by_id("u1") == active_user

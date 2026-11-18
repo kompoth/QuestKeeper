@@ -4,7 +4,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from app.domain.mail import Mailer
-from app.domain.models import PasswordReset, User, UserId
+from app.domain.models import PasswordReset, User, UserId, UserStatus
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services.access import PasswordResetTokenNotFoundError, UserNotFoundError
@@ -45,5 +45,11 @@ async def reset_password(repos: Repositories, token: str, new_password: str) -> 
         raise PasswordResetTokenNotFoundError(token)
 
     await repos.users.update_password(reset.user_id, hash_password(new_password))
+
+    # An admin-created account is PENDING until its first password is set - that's what activates it.
+    user = await repos.users.get_by_id(reset.user_id)
+    if user is not None and user.status == UserStatus.PENDING:
+        await repos.users.update_status(reset.user_id, UserStatus.ACTIVE)
+
     await repos.password_resets.delete(token)
     await repos.sessions.delete_all_for_user(reset.user_id)

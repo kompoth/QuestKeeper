@@ -10,16 +10,19 @@ from app.domain.models import (
     EntityId,
     Map,
     PasswordReset,
-    PendingRegistration,
     PermissionLevel,
+    RegistrationConfirmation,
+    RuntimeSettings,
     Session,
     User,
     UserId,
+    UserRole,
+    UserStatus,
     World,
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError
+from app.services.access import EmailAlreadyRegisteredError, UserNotFoundError
 
 
 @dataclass
@@ -39,6 +42,48 @@ class FakeUserRepository:
 
     async def update_password(self, user_id: UserId, hashed_password: str) -> None:
         self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"hashed_password": hashed_password})
+
+    async def list_page(self, offset: int, limit: int, search: str | None = None) -> Sequence[User]:
+        users = sorted(self._matching(search), key=lambda user: user.email)
+        return users[offset : offset + limit]
+
+    async def count(self, search: str | None = None) -> int:
+        return len(self._matching(search))
+
+    def _matching(self, search: str | None) -> list[User]:
+        if not search:
+            return list(self.users_by_id.values())
+        needle = search.lower()
+        return [u for u in self.users_by_id.values() if needle in u.name.lower() or needle in u.email.lower()]
+
+    async def update_role(self, user_id: UserId, role: UserRole) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"role": role})
+
+    async def update_status(self, user_id: UserId, status: UserStatus) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"status": status})
+
+    async def has_admin(self) -> bool:
+        return any(
+            user.role == UserRole.ADMIN and user.status == UserStatus.ACTIVE for user in self.users_by_id.values()
+        )
+
+    async def update_registration_pending(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(
+            update={"name": name, "hashed_password": hashed_password}
+        )
+
+    async def claim(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(
+            update={"name": name, "hashed_password": hashed_password, "status": UserStatus.ACTIVE}
+        )
 
 
 @dataclass
@@ -145,9 +190,6 @@ class FakeWorldInviteRepository:
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]:
         return [invite for invite in self.invites if invite.invitee_id == user_id and not invite.accepted]
 
-    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
-        return [invite for invite in self.invites if invite.invitee_email == email and not invite.accepted]
-
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         return [invite for invite in self.invites if invite.world_id == world_id]
 
@@ -161,21 +203,12 @@ class FakeWorldInviteRepository:
 
     async def create(self, invite: WorldInvite) -> WorldInvite:
         existing = next(
-            (e for e in self.invites if e.world_id == invite.world_id and e.invitee_email == invite.invitee_email),
-            None,
+            (e for e in self.invites if e.world_id == invite.world_id and e.invitee_id == invite.invitee_id), None
         )
         merged = invite.model_copy(update={"id": existing.id}) if existing else invite
         self.invites = [e for e in self.invites if e is not existing]
         self.invites.append(merged)
         return merged
-
-    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
-        self.invites = [
-            invite.model_copy(update={"invitee_id": user_id})
-            if invite.invitee_email == email and invite.invitee_id is None and not invite.accepted
-            else invite
-            for invite in self.invites
-        ]
 
     async def accept(self, invite: WorldInvite) -> None:
         self.invites.append(invite)
@@ -223,21 +256,35 @@ class FakePasswordResetRepository:
 
 
 @dataclass
-class FakePendingRegistrationRepository:
-    pending_by_email: dict[str, PendingRegistration] = field(default_factory=dict)
+class FakeRegistrationConfirmationRepository:
+    confirmations_by_user_id: dict[UserId, RegistrationConfirmation] = field(default_factory=dict)
 
-    async def create(self, pending: PendingRegistration) -> PendingRegistration:
-        self.pending_by_email[pending.email] = pending
-        return pending
+    async def create(self, confirmation: RegistrationConfirmation) -> None:
+        self.confirmations_by_user_id[confirmation.user_id] = confirmation
 
-    async def get_by_token(self, token: str) -> PendingRegistration | None:
-        pending = next((p for p in self.pending_by_email.values() if p.token == token), None)
-        if pending is None or pending.expires_at <= datetime.now(UTC):
+    async def get(self, token: str) -> RegistrationConfirmation | None:
+        confirmation = next((c for c in self.confirmations_by_user_id.values() if c.token == token), None)
+        if confirmation is None or confirmation.expires_at <= datetime.now(UTC):
             return None
-        return pending
+        return confirmation
 
     async def delete(self, token: str) -> None:
-        self.pending_by_email = {email: p for email, p in self.pending_by_email.items() if p.token != token}
+        self.confirmations_by_user_id = {
+            user_id: c for user_id, c in self.confirmations_by_user_id.items() if c.token != token
+        }
+
+
+@dataclass
+class FakeRuntimeSettingsRepository:
+    settings: RuntimeSettings = field(
+        default_factory=lambda: RuntimeSettings(registration_enabled=True, password_reset_enabled=True)
+    )
+
+    async def get(self) -> RuntimeSettings:
+        return self.settings
+
+    async def update(self, settings: RuntimeSettings) -> None:
+        self.settings = settings
 
 
 @dataclass

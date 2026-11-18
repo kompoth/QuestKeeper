@@ -1,15 +1,24 @@
-import type { User, UserRole } from '@/types/user'
+import type { User, UserRole, UserStatus } from '@/types/user'
 import { apiFetch } from '@/api/client'
 
-interface UserDto {
+export interface UserDto {
   id: string
   name: string
   email: string
   role: UserRole
+  status: UserStatus
+  joined_at: string
 }
 
-function toUser (dto: UserDto): User {
-  return { id: dto.id, name: dto.name, email: dto.email, role: dto.role }
+export function toUser (dto: UserDto): User {
+  return {
+    id: dto.id,
+    name: dto.name,
+    email: dto.email,
+    role: dto.role,
+    status: dto.status,
+    joinedAt: dto.joined_at,
+  }
 }
 
 export async function login (email: string, password: string): Promise<User> {
@@ -24,4 +33,8 @@ export async function logout (): Promise<void> {
 export async function getCurrentUser (): Promise<User> {
   const dto = await apiFetch<UserDto>('/auth/me')
   return toUser(dto)
+}
+
+export async function resetPassword (token: string, newPassword: string): Promise<void> {
+  await apiFetch<null>('/auth/password-reset', { method: 'POST', body: { token, new_password: newPassword } })
 }

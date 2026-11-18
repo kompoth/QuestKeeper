@@ -25,15 +25,17 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     smtp_from_address: str
 
-    registration_enabled: bool = True
-    password_reset_enabled: bool = True
+    # On startup, if the system has no admin yet, creates (or promotes) this account to admin.
+    # Both or neither - a no-op once any admin exists, so safe to leave set indefinitely.
+    seed_admin_email: str | None = None
+    seed_admin_password: str | None = None
 
 
 def get_settings() -> Settings:
     """Returns the process-wide cached `Settings`, built once from the environment.
 
-    Tests that mutate the environment mid-run (e.g. toggling REGISTRATION_ENABLED) must call
+    Tests that mutate the environment mid-run (e.g. toggling COOKIE_SECURE) must call
     `Settings.settings_clear_cache()` to force the next call here to rebuild from the new values -
-    see the autouse fixture in tests/integration/conftest.py.
+    see the autouse fixture in tests/unit/test_config.py.
     """
     return Settings.settings_cached()

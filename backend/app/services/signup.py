@@ -1,9 +1,8 @@
 """Account creation triggered by accepting an email-only world invite (confirm-by-token flow)."""
 
 from dataclasses import dataclass
-from uuid import uuid4
 
-from app.domain.models import Session, User, UserRole
+from app.domain.models import Session, User, UserStatus
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services import auth
@@ -22,23 +21,15 @@ async def confirm_invite_signup(repos: Repositories, token: str, name: str, pass
     if invite is None:
         raise InviteTokenNotFoundError(token)
 
-    existing = await repos.users.get_by_email(invite.invitee_email)
-    if existing is not None:
-        raise EmailAlreadyRegisteredError(invite.invitee_email)
+    user = await repos.users.get_by_id(invite.invitee_id)
+    if user is None:
+        raise InviteTokenNotFoundError(token)
+    if user.status != UserStatus.PENDING:
+        raise EmailAlreadyRegisteredError(user.email)
 
-    user = User(
-        id=str(uuid4()),
-        name=name,
-        email=invite.invitee_email,
-        hashed_password=hash_password(password),
-        role=UserRole.MEMBER,
-    )
-    await repos.users.create(user)
+    await repos.users.claim(user.id, name, hash_password(password))
+    await accept_invite(repos, user.id, invite)
 
-    # Generalized backfill: every pending invite for this email, not just the one tied to this token.
-    await repos.invites.link_pending_to_user(invite.invitee_email, user.id)
-
-    await accept_invite(repos, user.id, invite.model_copy(update={"invitee_id": user.id}))
-
-    session = await auth.login(repos, invite.invitee_email, password)
-    return SignupResult(user=user, session=session)
+    session = await auth.login(repos, user.email, password)
+    claimed = user.model_copy(update={"name": name, "status": UserStatus.ACTIVE})
+    return SignupResult(user=claimed, session=session)

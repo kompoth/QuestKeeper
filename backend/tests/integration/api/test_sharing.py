@@ -197,7 +197,7 @@ async def test_confirm_invite_rejects_unknown_or_expired_token(async_client):
     assert response.status_code == 404
 
 
-async def test_confirm_invite_rejects_when_email_already_has_account(async_client, db_session, mailer):
+async def test_confirm_invite_rejects_when_email_already_activated_in_the_meantime(async_client, db_session, mailer):
     await _login(async_client, db_session, user_id="owner")
     world_id = await _create_world(async_client)
     entity_id = await _create_entity(async_client, world_id)
@@ -207,22 +207,19 @@ async def test_confirm_invite_rejects_when_email_already_has_account(async_clien
         json={"invitee_email": "late-signup@example.com", "entity_id": entity_id, "level": "read"},
         headers=_csrf_headers(async_client),
     )
-    _, _, confirm_url = mailer.new_user_invites[-1]
-    token = confirm_url.split("token=")[1]
+    _, _, invite_confirm_url = mailer.new_user_invites[-1]
+    invite_token = invite_confirm_url.split("token=")[1]
 
-    db_session.add(
-        UserRow(
-            id="late-signup",
-            name="Late Signup",
-            email="late-signup@example.com",
-            hashed_password=hash_password(PASSWORD),
-            role=UserRole.MEMBER,
-        )
+    # The same (already-pending) email self-registers and confirms before the invite is used.
+    await async_client.post(
+        "/auth/register", json={"name": "Late Signup", "email": "late-signup@example.com", "password": PASSWORD}
     )
-    await db_session.commit()
+    _, registration_confirm_url = mailer.registration_confirmations[-1]
+    registration_token = registration_confirm_url.split("token=")[1]
+    await async_client.post("/auth/register/confirm", json={"token": registration_token})
 
     response = await async_client.post(
-        "/invites/confirm", json={"token": token, "name": "Late Signup", "password": PASSWORD}
+        "/invites/confirm", json={"token": invite_token, "name": "Late Signup", "password": PASSWORD}
     )
 
     assert response.status_code == 409

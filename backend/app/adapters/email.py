@@ -4,6 +4,8 @@ from email.message import EmailMessage
 
 import aiosmtplib
 
+from app.domain.mail import MailDeliveryError
+
 
 class SmtpMailer:
     def __init__(  # noqa: PLR0913 -- distinct SMTP connection/identity params, not data fields
@@ -67,11 +69,14 @@ class SmtpMailer:
         return message
 
     async def _send(self, message: EmailMessage) -> None:
-        await aiosmtplib.send(
-            message,
-            hostname=self._host,
-            port=self._port,
-            username=self._username,
-            password=self._password,
-            start_tls=self._use_tls,
-        )
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=self._host,
+                port=self._port,
+                username=self._username,
+                password=self._password,
+                start_tls=self._use_tls,
+            )
+        except (aiosmtplib.SMTPException, OSError) as exc:
+            raise MailDeliveryError("Failed to send email") from exc

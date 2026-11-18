@@ -8,7 +8,8 @@ from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
     FakePasswordResetRepository,
-    FakePendingRegistrationRepository,
+    FakeRegistrationConfirmationRepository,
+    FakeRuntimeSettingsRepository,
     FakeSessionRepository,
     FakeUserRepository,
     FakeWorldInviteRepository,
@@ -30,7 +31,8 @@ def make_repos(*, world=None) -> Repositories:
         invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
 
@@ -49,7 +51,8 @@ async def test_list_worlds_returns_owned_and_granted_worlds_but_not_others():
         invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
     result = await list_worlds(repos, OWNER_ID)
@@ -76,7 +79,8 @@ async def test_get_world_succeeds_for_a_user_with_any_grant_in_the_world():
         invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
     found = await get_world(repos, OTHER_USER_ID, WORLD_ID)

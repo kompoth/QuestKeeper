@@ -3,6 +3,10 @@
 from typing import Protocol
 
 
+class MailDeliveryError(Exception):
+    """Raised by a Mailer implementation when a send fails - e.g. the SMTP server is unreachable."""
+
+
 class Mailer(Protocol):
     async def send_existing_user_invite(self, *, to_email: str, world_name: str) -> None: ...
 

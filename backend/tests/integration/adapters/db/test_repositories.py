@@ -9,7 +9,7 @@ from app.adapters.db.orm import (
     MapPinRow,
     MapRow,
     PasswordResetRow,
-    PendingRegistrationRow,
+    RegistrationConfirmationRow,
     SessionRow,
     UserRow,
     WorldInviteRow,
@@ -20,7 +20,7 @@ from app.adapters.db.repositories import (
     SqlEntityPermissionRepository,
     SqlEntityRepository,
     SqlPasswordResetRepository,
-    SqlPendingRegistrationRepository,
+    SqlRegistrationConfirmationRepository,
     SqlSessionRepository,
     SqlUserRepository,
     SqlWorldInviteRepository,
@@ -31,11 +31,12 @@ from app.domain.models import (
     Map,
     MapPin,
     PasswordReset,
-    PendingRegistration,
     PermissionLevel,
+    RegistrationConfirmation,
     Session,
     User,
     UserRole,
+    UserStatus,
     World,
     WorldInvite,
 )
@@ -99,7 +100,15 @@ class TestSqlUserRepository:
         assert user is None
 
     async def test_create_persists_user(self, db_session):
-        user = User(id="u1", name="User", email="u1@example.com", hashed_password="hash", role=UserRole.MEMBER)
+        joined_at = datetime.now(UTC)
+        user = User(
+            id="u1",
+            name="User",
+            email="u1@example.com",
+            hashed_password="hash",
+            role=UserRole.MEMBER,
+            joined_at=joined_at,
+        )
 
         await SqlUserRepository(db_session).create(user)
         await db_session.commit()
@@ -107,6 +116,7 @@ class TestSqlUserRepository:
         row = await db_session.get(UserRow, "u1")
         assert row is not None
         assert row.email == "u1@example.com"
+        assert abs((row.joined_at.replace(tzinfo=UTC) - joined_at).total_seconds()) < 1
 
     async def test_update_password_changes_the_hash(self, db_session):
         db_session.add(make_user("u1"))
@@ -125,6 +135,55 @@ class TestSqlUserRepository:
         duplicate = User(id="u2", name="Other", email="dup@example.com", hashed_password="hash", role=UserRole.MEMBER)
         with pytest.raises(EmailAlreadyRegisteredError):
             await SqlUserRepository(db_session).create(duplicate)
+
+    async def test_update_registration_pending_refreshes_name_and_password(self, db_session):
+        row = make_user("u1")
+        row.status = UserStatus.PENDING
+        db_session.add(row)
+        await db_session.commit()
+
+        await SqlUserRepository(db_session).update_registration_pending("u1", "New Name", "new-hash")
+        await db_session.commit()
+
+        updated = await db_session.get(UserRow, "u1")
+        assert updated.name == "New Name"
+        assert updated.hashed_password == "new-hash"  # noqa: S105
+        assert updated.status == UserStatus.PENDING
+
+    async def test_claim_activates_the_user_and_sets_name_and_password(self, db_session):
+        row = make_user("u1")
+        row.status = UserStatus.PENDING
+        db_session.add(row)
+        await db_session.commit()
+
+        await SqlUserRepository(db_session).claim("u1", "Real Name", "new-hash")
+        await db_session.commit()
+
+        claimed = await db_session.get(UserRow, "u1")
+        assert claimed.name == "Real Name"
+        assert claimed.hashed_password == "new-hash"  # noqa: S105
+        assert claimed.status == UserStatus.ACTIVE
+
+    async def test_list_page_and_count_filter_by_search_on_name_or_email_case_insensitively(self, db_session):
+        db_session.add(
+            UserRow(id="u1", name="Alice Smith", email="alice@foo.com", hashed_password="x", role=UserRole.MEMBER)
+        )
+        db_session.add(
+            UserRow(id="u2", name="Bob Jones", email="bob@bar.com", hashed_password="x", role=UserRole.MEMBER)
+        )
+        await db_session.commit()
+
+        repo = SqlUserRepository(db_session)
+
+        by_name = await repo.list_page(0, 10, search="ALICE")
+        assert [user.id for user in by_name] == ["u1"]
+        assert await repo.count(search="ALICE") == 1
+
+        by_email = await repo.list_page(0, 10, search="bar.com")
+        assert [user.id for user in by_email] == ["u2"]
+        assert await repo.count(search="bar.com") == 1
+
+        assert await repo.count() == 2
 
 
 class TestSqlWorldRepository:
@@ -675,92 +734,74 @@ class TestSqlPasswordResetRepository:
         assert found.user_id == "u1"
 
 
-class TestSqlPendingRegistrationRepository:
-    async def test_create_and_get_by_token_round_trips_a_pending_registration(self, db_session):
-        pending = PendingRegistration(
-            token="tok",
-            name="New User",
-            email="new@example.com",
-            hashed_password="hash",
-            expires_at=datetime.now(UTC) + timedelta(hours=24),
-        )
-
-        persisted = await SqlPendingRegistrationRepository(db_session).create(pending)
+class TestSqlRegistrationConfirmationRepository:
+    async def test_create_and_get_round_trips_a_confirmation(self, db_session):
+        db_session.add(make_user("u1"))
         await db_session.commit()
 
-        assert persisted.token == "tok"  # noqa: S105
-        found = await SqlPendingRegistrationRepository(db_session).get_by_token("tok")
+        expires_at = datetime.now(UTC) + timedelta(hours=24)
+        confirmation = RegistrationConfirmation(token="tok", user_id="u1", expires_at=expires_at)
+        await SqlRegistrationConfirmationRepository(db_session).create(confirmation)
+        await db_session.commit()
+
+        found = await SqlRegistrationConfirmationRepository(db_session).get("tok")
         assert found is not None
-        assert found.email == "new@example.com"
+        assert found.user_id == "u1"
 
-    async def test_get_by_token_returns_none_when_not_found(self, db_session):
-        found = await SqlPendingRegistrationRepository(db_session).get_by_token("missing")
-
-        assert found is None
-
-    async def test_get_by_token_returns_none_for_an_expired_registration(self, db_session):
-        db_session.add(
-            PendingRegistrationRow(
-                token="tok",
-                name="New User",
-                email="new@example.com",
-                hashed_password="hash",
-                expires_at=datetime.now(UTC) - timedelta(seconds=1),
-            )
-        )
-        await db_session.commit()
-
-        found = await SqlPendingRegistrationRepository(db_session).get_by_token("tok")
+    async def test_get_returns_none_when_token_does_not_exist(self, db_session):
+        found = await SqlRegistrationConfirmationRepository(db_session).get("missing")
 
         assert found is None
 
-    async def test_delete_removes_the_pending_registration(self, db_session):
+    async def test_get_returns_none_for_an_expired_confirmation(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
         db_session.add(
-            PendingRegistrationRow(
-                token="tok",
-                name="New User",
-                email="new@example.com",
-                hashed_password="hash",
-                expires_at=datetime.now(UTC) + timedelta(hours=24),
-            )
+            RegistrationConfirmationRow(token="tok", user_id="u1", expires_at=datetime.now(UTC) - timedelta(seconds=1))
         )
         await db_session.commit()
 
-        await SqlPendingRegistrationRepository(db_session).delete("tok")
+        found = await SqlRegistrationConfirmationRepository(db_session).get("tok")
+
+        assert found is None
+
+    async def test_delete_removes_the_confirmation(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(
+            RegistrationConfirmationRow(token="tok", user_id="u1", expires_at=datetime.now(UTC) + timedelta(hours=24))
+        )
         await db_session.commit()
 
-        assert await db_session.get(PendingRegistrationRow, "tok") is None
+        await SqlRegistrationConfirmationRepository(db_session).delete("tok")
+        await db_session.commit()
+
+        assert await db_session.get(RegistrationConfirmationRow, "tok") is None
 
     async def test_delete_is_a_no_op_when_token_does_not_exist(self, db_session):
-        await SqlPendingRegistrationRepository(db_session).delete("missing")
+        await SqlRegistrationConfirmationRepository(db_session).delete("missing")
 
-    async def test_create_for_the_same_email_replaces_the_pending_row_with_a_fresh_token(self, db_session):
-        repo = SqlPendingRegistrationRepository(db_session)
-        first = PendingRegistration(
-            token="first-tok",
-            name="First Name",
-            email="new@example.com",
-            hashed_password="hash-1",
-            expires_at=datetime.now(UTC) + timedelta(hours=24),
+    async def test_create_for_the_same_user_replaces_the_outstanding_token(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+
+        repo = SqlRegistrationConfirmationRepository(db_session)
+        first = RegistrationConfirmation(
+            token="first-tok", user_id="u1", expires_at=datetime.now(UTC) + timedelta(hours=24)
         )
         await repo.create(first)
         await db_session.commit()
 
-        second = PendingRegistration(
-            token="second-tok",
-            name="Second Name",
-            email="new@example.com",
-            hashed_password="hash-2",
-            expires_at=datetime.now(UTC) + timedelta(hours=24),
+        second = RegistrationConfirmation(
+            token="second-tok", user_id="u1", expires_at=datetime.now(UTC) + timedelta(hours=24)
         )
-        persisted = await repo.create(second)
+        await repo.create(second)
         await db_session.commit()
 
-        assert persisted.name == "Second Name"
-        assert await repo.get_by_token("first-tok") is None
-        found = await repo.get_by_token("second-tok")
+        assert await repo.get("first-tok") is None
+        found = await repo.get("second-tok")
         assert found is not None
-        assert found.name == "Second Name"
+        assert found.user_id == "u1"
 
 
 class TestSqlEntityPermissionRepository:
@@ -870,24 +911,12 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(
             WorldInviteRow(
-                id="i1",
-                world_id="w1",
-                invitee_id="invitee",
-                invitee_email="invitee@example.com",
-                entity_id="e1",
-                level=PermissionLevel.READ,
-                accepted=False,
+                id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.READ, accepted=False
             )
         )
         db_session.add(
             WorldInviteRow(
-                id="i2",
-                world_id="w2",
-                invitee_id="invitee",
-                invitee_email="invitee@example.com",
-                entity_id="e2",
-                level=PermissionLevel.WRITE,
-                accepted=True,
+                id="i2", world_id="w2", invitee_id="invitee", entity_id="e2", level=PermissionLevel.WRITE, accepted=True
             )
         )
         await db_session.commit()
@@ -898,45 +927,10 @@ class TestSqlWorldInviteRepository:
         assert invites[0].world_id == "w1"
         assert invites[0].accepted is False
 
-    async def test_get_pending_for_email_excludes_accepted_invites(self, db_session):
-        db_session.add(make_user("u1"))
-        await db_session.commit()
-        db_session.add(make_world("w1", "u1"))
-        db_session.add(make_world("w2", "u1"))
-        await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        db_session.add(make_entity("e2", world_id="w2"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="i1",
-                world_id="w1",
-                invitee_id=None,
-                invitee_email="a@example.com",
-                entity_id="e1",
-                level=PermissionLevel.READ,
-                accepted=False,
-            )
-        )
-        db_session.add(
-            WorldInviteRow(
-                id="i2",
-                world_id="w2",
-                invitee_id=None,
-                invitee_email="a@example.com",
-                entity_id="e2",
-                level=PermissionLevel.WRITE,
-                accepted=True,
-            )
-        )
-        await db_session.commit()
-
-        invites = await SqlWorldInviteRepository(db_session).get_pending_for_email("a@example.com")
-
-        assert [invite.id for invite in invites] == ["i1"]
-
     async def test_get_all_for_world_returns_pending_and_accepted(self, db_session):
         db_session.add(make_user("u1"))
+        db_session.add(make_user("a"))
+        db_session.add(make_user("b"))
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
@@ -944,24 +938,12 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(
             WorldInviteRow(
-                id="i1",
-                world_id="w1",
-                invitee_id=None,
-                invitee_email="a@example.com",
-                entity_id="e1",
-                level=PermissionLevel.READ,
-                accepted=False,
+                id="i1", world_id="w1", invitee_id="a", entity_id="e1", level=PermissionLevel.READ, accepted=False
             )
         )
         db_session.add(
             WorldInviteRow(
-                id="i2",
-                world_id="w1",
-                invitee_id=None,
-                invitee_email="b@example.com",
-                entity_id="e1",
-                level=PermissionLevel.WRITE,
-                accepted=True,
+                id="i2", world_id="w1", invitee_id="b", entity_id="e1", level=PermissionLevel.WRITE, accepted=True
             )
         )
         await db_session.commit()
@@ -972,6 +954,7 @@ class TestSqlWorldInviteRepository:
 
     async def test_get_by_token_returns_the_invite_for_a_valid_unexpired_token(self, db_session):
         db_session.add(make_user("u1"))
+        db_session.add(make_user("a"))
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
@@ -981,8 +964,7 @@ class TestSqlWorldInviteRepository:
             WorldInviteRow(
                 id="i1",
                 world_id="w1",
-                invitee_id=None,
-                invitee_email="a@example.com",
+                invitee_id="a",
                 entity_id="e1",
                 level=PermissionLevel.READ,
                 accepted=False,
@@ -999,6 +981,7 @@ class TestSqlWorldInviteRepository:
 
     async def test_get_by_token_returns_none_for_expired_token(self, db_session):
         db_session.add(make_user("u1"))
+        db_session.add(make_user("a"))
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
@@ -1008,8 +991,7 @@ class TestSqlWorldInviteRepository:
             WorldInviteRow(
                 id="i1",
                 world_id="w1",
-                invitee_id=None,
-                invitee_email="a@example.com",
+                invitee_id="a",
                 entity_id="e1",
                 level=PermissionLevel.READ,
                 accepted=False,
@@ -1036,7 +1018,6 @@ class TestSqlWorldInviteRepository:
                 id="i1",
                 world_id="w1",
                 invitee_id="invitee",
-                invitee_email="a@example.com",
                 entity_id="e1",
                 level=PermissionLevel.READ,
                 accepted=True,
@@ -1049,47 +1030,6 @@ class TestSqlWorldInviteRepository:
         invite = await SqlWorldInviteRepository(db_session).get_by_token("tok")
 
         assert invite is None
-
-    async def test_link_pending_to_user_backfills_only_matching_pending_rows(self, db_session):
-        db_session.add(make_user("u1"))
-        await db_session.commit()
-        db_session.add(make_world("w1", "u1"))
-        db_session.add(make_world("w2", "u1"))
-        await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        db_session.add(make_entity("e2", world_id="w2"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="i1",
-                world_id="w1",
-                invitee_id=None,
-                invitee_email="a@example.com",
-                entity_id="e1",
-                level=PermissionLevel.READ,
-                accepted=False,
-            )
-        )
-        db_session.add(
-            WorldInviteRow(
-                id="i2",
-                world_id="w2",
-                invitee_id=None,
-                invitee_email="a@example.com",
-                entity_id="e2",
-                level=PermissionLevel.WRITE,
-                accepted=True,
-            )
-        )
-        await db_session.commit()
-
-        await SqlWorldInviteRepository(db_session).link_pending_to_user("a@example.com", "u1")
-        await db_session.commit()
-
-        pending_row = await db_session.get(WorldInviteRow, "i1")
-        accepted_row = await db_session.get(WorldInviteRow, "i2")
-        assert pending_row.invitee_id == "u1"
-        assert accepted_row.invitee_id is None
 
     async def test_accept_marks_invite_accepted_and_grants_permission(self, db_session):
         db_session.add(make_user("u1"))
@@ -1104,7 +1044,6 @@ class TestSqlWorldInviteRepository:
                 id="i1",
                 world_id="w1",
                 invitee_id="invitee",
-                invitee_email="invitee@example.com",
                 entity_id="e1",
                 level=PermissionLevel.WRITE,
                 accepted=False,
@@ -1113,13 +1052,7 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
 
         invite = WorldInvite(
-            id="i1",
-            world_id="w1",
-            invitee_id="invitee",
-            invitee_email="invitee@example.com",
-            entity_id="e1",
-            level=PermissionLevel.WRITE,
-            accepted=False,
+            id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.WRITE, accepted=False
         )
         await SqlWorldInviteRepository(db_session).accept(invite)
         await db_session.commit()
@@ -1135,7 +1068,6 @@ class TestSqlWorldInviteRepository:
             id="missing",
             world_id="missing-world",
             invitee_id="missing-invitee",
-            invitee_email="missing@example.com",
             entity_id="e1",
             level=PermissionLevel.READ,
         )
@@ -1152,14 +1084,7 @@ class TestSqlWorldInviteRepository:
         db_session.add(make_entity("e1", world_id="w1"))
         await db_session.commit()
 
-        invite = WorldInvite(
-            id="i1",
-            world_id="w1",
-            invitee_id="invitee",
-            invitee_email="invitee@example.com",
-            entity_id="e1",
-            level=PermissionLevel.READ,
-        )
+        invite = WorldInvite(id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.READ)
         await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()
 
@@ -1168,7 +1093,7 @@ class TestSqlWorldInviteRepository:
         assert row.level == PermissionLevel.READ
         assert row.accepted is False
 
-    async def test_create_upserts_by_world_and_invitee_email_preserving_row_id(self, db_session):
+    async def test_create_upserts_by_world_and_invitee_preserving_row_id(self, db_session):
         db_session.add(make_user("u1"))
         db_session.add(make_user("invitee"))
         await db_session.commit()
@@ -1182,7 +1107,6 @@ class TestSqlWorldInviteRepository:
                 id="original-id",
                 world_id="w1",
                 invitee_id="invitee",
-                invitee_email="invitee@example.com",
                 entity_id="e1",
                 level=PermissionLevel.READ,
                 accepted=False,
@@ -1191,12 +1115,7 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
 
         invite = WorldInvite(
-            id="new-id",
-            world_id="w1",
-            invitee_id="invitee",
-            invitee_email="invitee@example.com",
-            entity_id="e2",
-            level=PermissionLevel.WRITE,
+            id="new-id", world_id="w1", invitee_id="invitee", entity_id="e2", level=PermissionLevel.WRITE
         )
         await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()

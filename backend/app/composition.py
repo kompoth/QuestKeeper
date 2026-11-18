@@ -11,7 +11,8 @@ from app.adapters.db.repositories import (
     SqlEntityPermissionRepository,
     SqlEntityRepository,
     SqlPasswordResetRepository,
-    SqlPendingRegistrationRepository,
+    SqlRegistrationConfirmationRepository,
+    SqlRuntimeSettingsRepository,
     SqlSessionRepository,
     SqlUserRepository,
     SqlWorldInviteRepository,
@@ -32,7 +33,8 @@ def build_repositories(session: AsyncSession) -> Repositories:
         invites=SqlWorldInviteRepository(session),
         sessions=SqlSessionRepository(session),
         password_resets=SqlPasswordResetRepository(session),
-        pending_registrations=SqlPendingRegistrationRepository(session),
+        registration_confirmations=SqlRegistrationConfirmationRepository(session),
+        runtime_settings=SqlRuntimeSettingsRepository(session),
         commit=session.commit,
     )
 

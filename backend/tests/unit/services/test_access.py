@@ -8,7 +8,8 @@ from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
     FakePasswordResetRepository,
-    FakePendingRegistrationRepository,
+    FakeRegistrationConfirmationRepository,
+    FakeRuntimeSettingsRepository,
     FakeSessionRepository,
     FakeUserRepository,
     FakeWorldInviteRepository,
@@ -37,7 +38,8 @@ def make_repos(*, entity, world=None, ancestor_ids=(), grants=None) -> Repositor
         invites=FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
 

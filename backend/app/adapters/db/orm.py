@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from app.domain.models import PermissionLevel, UserRole
+from app.domain.models import PermissionLevel, UserRole, UserStatus
 
 ID_LENGTH = 36
 
@@ -24,6 +24,10 @@ class UserRow(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False, length=20))
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus, native_enum=False, length=20), default=UserStatus.ACTIVE
+    )
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 
 class WorldRow(Base):
@@ -105,15 +109,14 @@ class SessionRow(Base):
 
 
 class WorldInviteRow(Base):
-    """One row per (world, invitee email): re-inviting an already-pending email updates it in place."""
+    """One row per (world, invitee): re-inviting an already-pending invitee updates it in place."""
 
     __tablename__ = "world_invites"
-    __table_args__ = (UniqueConstraint("world_id", "invitee_email", name="uq_world_invites_world_id_invitee_email"),)
+    __table_args__ = (UniqueConstraint("world_id", "invitee_id", name="uq_world_invites_world_id_invitee_id"),)
 
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
     world_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("worlds.id"), index=True)
-    invitee_id: Mapped[str | None] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"), index=True, default=None)
-    invitee_email: Mapped[str] = mapped_column(String(255))
+    invitee_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"), index=True)
     entity_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("entities.id"))
     level: Mapped[PermissionLevel] = mapped_column(Enum(PermissionLevel, native_enum=False, length=10))
     accepted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -131,11 +134,21 @@ class PasswordResetRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
-class PendingRegistrationRow(Base):
-    __tablename__ = "pending_registrations"
+class RegistrationConfirmationRow(Base):
+    """One row per user: a new registration request replaces the user's existing outstanding one."""
 
-    token: Mapped[str] = mapped_column(String(255), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    __tablename__ = "registration_confirmations"
+
+    user_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"), primary_key=True)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class RuntimeSettingsRow(Base):
+    """Single row (fixed `id`), upserted in place by admin edits."""
+
+    __tablename__ = "runtime_settings"
+
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
+    registration_enabled: Mapped[bool] = mapped_column(Boolean)
+    password_reset_enabled: Mapped[bool] = mapped_column(Boolean)

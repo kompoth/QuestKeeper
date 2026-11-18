@@ -1,9 +1,10 @@
 import pytest
 
 from app.adapters.db.orm import UserRow
-from app.config import Settings
-from app.domain.models import UserRole
+from app.composition import build_repositories
+from app.domain.models import RuntimeSettings, UserRole
 from app.domain.security import hash_password
+from app.services.settings import update_runtime_settings
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -13,6 +14,14 @@ PASSWORD = "correct horse battery staple"  # noqa: S105
 
 async def _create_user(db_session, user_id="u1", *, role=UserRole.MEMBER, email=EMAIL) -> None:
     db_session.add(UserRow(id=user_id, name="User", email=email, hashed_password=hash_password(PASSWORD), role=role))
+    await db_session.commit()
+
+
+async def _set_runtime_settings(db_session, *, registration_enabled=True, password_reset_enabled=True) -> None:
+    await update_runtime_settings(
+        build_repositories(db_session),
+        RuntimeSettings(registration_enabled=registration_enabled, password_reset_enabled=password_reset_enabled),
+    )
     await db_session.commit()
 
 
@@ -141,9 +150,7 @@ async def test_register_then_confirm_logs_in_the_new_user(async_client, mailer):
     assert me_response.json()["email"] == "newbie@example.com"
 
 
-async def test_registration_disabled_blocks_register_but_not_invite_confirm(
-    async_client, db_session, mailer, monkeypatch
-):
+async def test_registration_disabled_blocks_register_but_not_invite_confirm(async_client, db_session, mailer):
     await _create_user(db_session, user_id="owner")
     await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     world_response = await async_client.post("/worlds", json={"name": "World"}, headers=_csrf_headers(async_client))
@@ -160,8 +167,7 @@ async def test_registration_disabled_blocks_register_but_not_invite_confirm(
     _, _, invite_confirm_url = mailer.new_user_invites[-1]
     invite_token = invite_confirm_url.split("token=")[1]
 
-    monkeypatch.setenv("REGISTRATION_ENABLED", "false")
-    Settings.settings_clear_cache()
+    await _set_runtime_settings(db_session, registration_enabled=False)
 
     register_response = await async_client.post(
         "/auth/register", json={"name": "New User", "email": "newbie@example.com", "password": PASSWORD}
@@ -175,14 +181,13 @@ async def test_registration_disabled_blocks_register_but_not_invite_confirm(
 
 
 async def test_password_reset_disabled_blocks_public_routes_but_admin_override_still_works(
-    async_client, db_session, mailer, monkeypatch
+    async_client, db_session, mailer
 ):
     await _create_user(db_session, user_id="target")
     await _create_user(db_session, user_id="admin", role=UserRole.ADMIN, email="admin@example.com")
     await async_client.post("/auth/login", json={"email": "admin@example.com", "password": PASSWORD})
 
-    monkeypatch.setenv("PASSWORD_RESET_ENABLED", "false")
-    Settings.settings_clear_cache()
+    await _set_runtime_settings(db_session, password_reset_enabled=False)
 
     recovery_response = await async_client.post("/auth/password-recovery", json={"email": EMAIL})
     assert recovery_response.status_code == 403

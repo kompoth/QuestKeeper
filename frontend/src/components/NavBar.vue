@@ -7,6 +7,14 @@
     <v-spacer />
 
     <div class="d-flex ga-1 mr-2">
+      <v-btn
+        v-if="currentUser?.role === 'admin'"
+        aria-label="Admin settings"
+        icon="mdi-wizard-hat"
+        to="/admin"
+        variant="text"
+      />
+
       <ThemeToggle />
       <v-btn aria-label="Log out" icon="mdi-logout" variant="text" @click="emit('logout')" />
     </div>
@@ -64,6 +72,7 @@
   import type { NavItem } from '@/types/nav-item'
   import { ref, watch } from 'vue'
   import { useDisplay } from 'vuetify'
+  import { useAuth } from '@/composables/useAuth'
   import ThemeToggle from './ThemeToggle.vue'
 
   withDefaults(defineProps<{
@@ -77,6 +86,8 @@
   const emit = defineEmits<{
     logout: []
   }>()
+
+  const { currentUser } = useAuth()
 
   const search = ref('')
 

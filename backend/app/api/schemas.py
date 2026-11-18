@@ -6,9 +6,22 @@ already clean Pydantic models with nothing sensitive to hide. `WorldInvite` is n
 and `PendingInviteOut` below, which redact both.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
-from app.domain.models import EntityId, Map, MapPin, PermissionLevel, UserId, UserRole, WorldId, WorldInvite
+from app.domain.models import (
+    EntityId,
+    Map,
+    MapPin,
+    PermissionLevel,
+    RuntimeSettings,
+    UserId,
+    UserRole,
+    UserStatus,
+    WorldId,
+    WorldInvite,
+)
 
 
 class UserOut(BaseModel):
@@ -16,6 +29,8 @@ class UserOut(BaseModel):
     name: str
     email: str
     role: UserRole
+    status: UserStatus
+    joined_at: datetime
 
 
 class LoginRequest(BaseModel):
@@ -77,9 +92,9 @@ class InviteSummary(BaseModel):
     accepted: bool
 
     @classmethod
-    def from_invite(cls, invite: WorldInvite) -> InviteSummary:
+    def from_invite(cls, invite: WorldInvite, invitee_email: str) -> InviteSummary:
         return cls(
-            invitee_email=invite.invitee_email, entity_id=invite.entity_id, level=invite.level, accepted=invite.accepted
+            invitee_email=invitee_email, entity_id=invite.entity_id, level=invite.level, accepted=invite.accepted
         )
 
 
@@ -113,3 +128,44 @@ class RegisterRequest(BaseModel):
 
 class ConfirmRegistrationRequest(BaseModel):
     token: str
+
+
+class RuntimeSettingsOut(BaseModel):
+    registration_enabled: bool
+    password_reset_enabled: bool
+
+    @classmethod
+    def from_settings(cls, settings: RuntimeSettings) -> RuntimeSettingsOut:
+        return cls(
+            registration_enabled=settings.registration_enabled,
+            password_reset_enabled=settings.password_reset_enabled,
+        )
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    registration_enabled: bool
+    password_reset_enabled: bool
+
+    def to_settings(self) -> RuntimeSettings:
+        return RuntimeSettings(
+            registration_enabled=self.registration_enabled, password_reset_enabled=self.password_reset_enabled
+        )
+
+
+class UserListOut(BaseModel):
+    users: list[UserOut]
+    total: int
+
+
+class RoleUpdate(BaseModel):
+    role: UserRole
+
+
+class CreateUserRequest(BaseModel):
+    name: str
+    email: str
+    role: UserRole
+
+
+class StatusUpdate(BaseModel):
+    status: UserStatus

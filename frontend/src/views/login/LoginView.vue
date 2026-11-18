@@ -41,9 +41,13 @@
       await login(email.value, password.value)
       router.push('/w')
     } catch (error_) {
-      error.value = error_ instanceof ApiError && error_.status === 401
-        ? 'Invalid email or password'
-        : 'Something went wrong, please try again'
+      if (error_ instanceof ApiError && error_.status === 401) {
+        error.value = 'Invalid email or password'
+      } else if (error_ instanceof ApiError && error_.status === 403) {
+        error.value = error_.detail
+      } else {
+        error.value = 'Something went wrong, please try again'
+      }
     } finally {
       submitting.value = false
     }

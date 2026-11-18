@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,8 @@ from app.adapters.db.orm import (
     MapPinRow,
     MapRow,
     PasswordResetRow,
-    PendingRegistrationRow,
+    RegistrationConfirmationRow,
+    RuntimeSettingsRow,
     SessionRow,
     UserRow,
     WorldInviteRow,
@@ -30,16 +31,21 @@ from app.domain.models import (
     Map,
     MapPin,
     PasswordReset,
-    PendingRegistration,
     PermissionLevel,
+    RegistrationConfirmation,
+    RuntimeSettings,
     Session,
     User,
     UserId,
+    UserRole,
+    UserStatus,
     World,
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError
+from app.services.access import EmailAlreadyRegisteredError, UserNotFoundError
+
+_RUNTIME_SETTINGS_ID = "singleton"
 
 
 class InviteNotFoundError(Exception):
@@ -59,8 +65,24 @@ async def _upsert(
     await session.execute(stmt)
 
 
+def _apply_search(query: Any, search: str | None) -> Any:  # noqa: ANN401 -- a Select of unspecified result shape
+    """Restricts `query` to users whose name or email contains `search` (case-insensitive), if given."""
+    if not search:
+        return query
+    pattern = f"%{search}%"
+    return query.where(or_(UserRow.name.ilike(pattern), UserRow.email.ilike(pattern)))
+
+
 def _user_from_row(row: UserRow) -> User:
-    return User(id=row.id, name=row.name, email=row.email, hashed_password=row.hashed_password, role=row.role)
+    return User(
+        id=row.id,
+        name=row.name,
+        email=row.email,
+        hashed_password=row.hashed_password,
+        role=row.role,
+        status=row.status,
+        joined_at=row.joined_at,
+    )
 
 
 def _invite_from_row(row: WorldInviteRow) -> WorldInvite:
@@ -68,7 +90,6 @@ def _invite_from_row(row: WorldInviteRow) -> WorldInvite:
         id=row.id,
         world_id=row.world_id,
         invitee_id=row.invitee_id,
-        invitee_email=row.invitee_email,
         entity_id=row.entity_id,
         level=row.level,
         accepted=row.accepted,
@@ -131,7 +152,15 @@ class SqlUserRepository:
 
     async def create(self, user: User) -> None:
         self._session.add(
-            UserRow(id=user.id, name=user.name, email=user.email, hashed_password=user.hashed_password, role=user.role)
+            UserRow(
+                id=user.id,
+                name=user.name,
+                email=user.email,
+                hashed_password=user.hashed_password,
+                role=user.role,
+                status=user.status,
+                joined_at=user.joined_at,
+            )
         )
         try:
             await self._session.flush()
@@ -143,6 +172,49 @@ class SqlUserRepository:
         if row is None:
             raise RuntimeError(f"update_password() called for a user that doesn't exist: {user_id}")
         row.hashed_password = hashed_password
+
+    async def list_page(self, offset: int, limit: int, search: str | None = None) -> Sequence[User]:
+        query = select(UserRow).order_by(UserRow.email).offset(offset).limit(limit)
+        result = await self._session.execute(_apply_search(query, search))
+        return [_user_from_row(row) for row in result.scalars()]
+
+    async def count(self, search: str | None = None) -> int:
+        query = select(func.count()).select_from(UserRow)
+        result = await self._session.execute(_apply_search(query, search))
+        return result.scalar_one()
+
+    async def update_role(self, user_id: UserId, role: UserRole) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.role = role
+
+    async def update_status(self, user_id: UserId, status: UserStatus) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.status = status
+
+    async def has_admin(self) -> bool:
+        result = await self._session.execute(
+            select(UserRow.id).where(UserRow.role == UserRole.ADMIN, UserRow.status == UserStatus.ACTIVE).limit(1)
+        )
+        return result.first() is not None
+
+    async def update_registration_pending(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.name = name
+        row.hashed_password = hashed_password
+
+    async def claim(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.name = name
+        row.hashed_password = hashed_password
+        row.status = UserStatus.ACTIVE
 
 
 class SqlWorldRepository:
@@ -419,49 +491,36 @@ class SqlPasswordResetRepository:
             await self._session.delete(row)
 
 
-class SqlPendingRegistrationRepository:
+class SqlRegistrationConfirmationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, pending: PendingRegistration) -> PendingRegistration:
+    async def create(self, confirmation: RegistrationConfirmation) -> None:
         await _upsert(
             self._session,
-            PendingRegistrationRow,
-            {
-                "token": pending.token,
-                "name": pending.name,
-                "email": pending.email,
-                "hashed_password": pending.hashed_password,
-                "expires_at": pending.expires_at,
-            },
-            update_columns=["token", "name", "hashed_password", "expires_at"],
-        )
-        result = await self._session.execute(
-            select(PendingRegistrationRow).where(PendingRegistrationRow.email == pending.email)
-        )
-        row = result.scalar_one()
-        return PendingRegistration(
-            token=row.token,
-            name=row.name,
-            email=row.email,
-            hashed_password=row.hashed_password,
-            expires_at=row.expires_at,
+            RegistrationConfirmationRow,
+            {"user_id": confirmation.user_id, "token": confirmation.token, "expires_at": confirmation.expires_at},
+            update_columns=["token", "expires_at"],
         )
 
-    async def get_by_token(self, token: str) -> PendingRegistration | None:
-        row = await self._session.get(PendingRegistrationRow, token)
+    async def get(self, token: str) -> RegistrationConfirmation | None:
+        result = await self._session.execute(
+            select(RegistrationConfirmationRow).where(RegistrationConfirmationRow.token == token)
+        )
+        row = result.scalar_one_or_none()
         if row is None:
             return None
 
         expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
         if expires_at <= datetime.now(UTC):
             return None
-        return PendingRegistration(
-            token=row.token, name=row.name, email=row.email, hashed_password=row.hashed_password, expires_at=expires_at
-        )
+        return RegistrationConfirmation(token=row.token, user_id=row.user_id, expires_at=expires_at)
 
     async def delete(self, token: str) -> None:
-        row = await self._session.get(PendingRegistrationRow, token)
+        result = await self._session.execute(
+            select(RegistrationConfirmationRow).where(RegistrationConfirmationRow.token == token)
+        )
+        row = result.scalar_one_or_none()
         if row is not None:
             await self._session.delete(row)
 
@@ -476,15 +535,12 @@ class SqlWorldInviteRepository:
         )
         return [_invite_from_row(row) for row in result.scalars()]
 
-    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
-        result = await self._session.execute(
-            select(WorldInviteRow).where(WorldInviteRow.invitee_email == email, ~WorldInviteRow.accepted)
-        )
-        return [_invite_from_row(row) for row in result.scalars()]
-
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         result = await self._session.execute(
-            select(WorldInviteRow).where(WorldInviteRow.world_id == world_id).order_by(WorldInviteRow.invitee_email)
+            select(WorldInviteRow)
+            .join(UserRow, UserRow.id == WorldInviteRow.invitee_id)
+            .where(WorldInviteRow.world_id == world_id)
+            .order_by(UserRow.email)
         )
         return [_invite_from_row(row) for row in result.scalars()]
 
@@ -509,28 +565,20 @@ class SqlWorldInviteRepository:
                 "id": invite.id,
                 "world_id": invite.world_id,
                 "invitee_id": invite.invitee_id,
-                "invitee_email": invite.invitee_email,
                 "entity_id": invite.entity_id,
                 "level": invite.level,
                 "accepted": invite.accepted,
                 "confirmation_token": invite.confirmation_token,
                 "token_expires_at": invite.token_expires_at,
             },
-            update_columns=["invitee_id", "entity_id", "level", "accepted", "confirmation_token", "token_expires_at"],
+            update_columns=["entity_id", "level", "accepted", "confirmation_token", "token_expires_at"],
         )
         result = await self._session.execute(
             select(WorldInviteRow).where(
-                WorldInviteRow.world_id == invite.world_id, WorldInviteRow.invitee_email == invite.invitee_email
+                WorldInviteRow.world_id == invite.world_id, WorldInviteRow.invitee_id == invite.invitee_id
             )
         )
         return _invite_from_row(result.scalar_one())
-
-    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
-        await self._session.execute(
-            update(WorldInviteRow)
-            .where(WorldInviteRow.invitee_email == email, WorldInviteRow.invitee_id.is_(None), ~WorldInviteRow.accepted)
-            .values(invitee_id=user_id)
-        )
 
     async def accept(self, invite: WorldInvite) -> None:
         result = await self._session.execute(
@@ -542,10 +590,32 @@ class SqlWorldInviteRepository:
         if row is None:
             raise InviteNotFoundError(invite.world_id, invite.invitee_id)
 
-        if invite.invitee_id is None:
-            raise RuntimeError(f"accept() called for an invite with no resolved invitee_id: {invite.id}")
-
         row.accepted = True
         self._session.add(
             EntityPermissionRow(user_id=invite.invitee_id, entity_id=invite.entity_id, level=invite.level)
+        )
+
+
+class SqlRuntimeSettingsRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self) -> RuntimeSettings:
+        row = await self._session.get(RuntimeSettingsRow, _RUNTIME_SETTINGS_ID)
+        if row is None:
+            return RuntimeSettings(registration_enabled=True, password_reset_enabled=True)
+        return RuntimeSettings(
+            registration_enabled=row.registration_enabled, password_reset_enabled=row.password_reset_enabled
+        )
+
+    async def update(self, settings: RuntimeSettings) -> None:
+        await _upsert(
+            self._session,
+            RuntimeSettingsRow,
+            {
+                "id": _RUNTIME_SETTINGS_ID,
+                "registration_enabled": settings.registration_enabled,
+                "password_reset_enabled": settings.password_reset_enabled,
+            },
+            update_columns=["registration_enabled", "password_reset_enabled"],
         )

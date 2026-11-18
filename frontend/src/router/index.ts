@@ -9,18 +9,23 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { getEntity } from '@/api/entities'
 import { getWorld } from '@/api/worlds'
 import { useAuth } from '@/composables/useAuth'
+import Admin from '@/layouts/Admin.vue'
 import Landing from '@/layouts/Landing.vue'
 import Login from '@/layouts/Login.vue'
 import NotFound from '@/layouts/NotFound.vue'
 import World from '@/layouts/World.vue'
 import Worlds from '@/layouts/Worlds.vue'
+import AdminSettingsView from '@/views/admin/AdminSettingsView.vue'
+import AdminUsersView from '@/views/admin/AdminUsersView.vue'
 import LoginView from '@/views/login/LoginView.vue'
 import PasswordRecoveryView from '@/views/login/PasswordRecoveryView.vue'
+import ResetPasswordView from '@/views/login/ResetPasswordView.vue'
 import EntityView from '@/views/world/EntityView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
+    requiresAdmin?: boolean
   }
 }
 
@@ -42,6 +47,10 @@ const router = createRouter({
         {
           path: 'password-recovery',
           component: PasswordRecoveryView,
+        },
+        {
+          path: 'reset-password',
+          component: ResetPasswordView,
         },
       ],
     },
@@ -73,6 +82,25 @@ const router = createRouter({
       ],
     },
     {
+      path: '/admin',
+      component: Admin,
+      meta: { requiresAuth: true, requiresAdmin: true },
+      children: [
+        {
+          path: '',
+          redirect: '/admin/settings',
+        },
+        {
+          path: 'settings',
+          component: AdminSettingsView,
+        },
+        {
+          path: 'users',
+          component: AdminUsersView,
+        },
+      ],
+    },
+    {
       path: '/not-found',
       component: NotFound,
     },
@@ -92,6 +120,10 @@ router.beforeEach(async to => {
 
   if (to.meta.requiresAuth && !currentUser.value) {
     return { path: '/login' }
+  }
+
+  if (to.meta.requiresAdmin && currentUser.value?.role !== 'admin') {
+    return { path: '/w' }
   }
 
   if (to.path.startsWith('/login') && currentUser.value) {

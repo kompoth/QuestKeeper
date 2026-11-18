@@ -51,25 +51,10 @@ def test_get_settings_raises_when_a_required_field_is_missing(monkeypatch):
 def test_optional_fields_fall_back_to_defaults(monkeypatch):
     _set_required_env(monkeypatch)
     monkeypatch.delenv("COOKIE_SECURE", raising=False)
-    monkeypatch.delenv("REGISTRATION_ENABLED", raising=False)
-    monkeypatch.delenv("PASSWORD_RESET_ENABLED", raising=False)
     monkeypatch.delenv("SMTP_PORT", raising=False)
 
     settings = get_settings()
 
     assert settings.cookie_secure is True
-    assert settings.registration_enabled is True
-    assert settings.password_reset_enabled is True
     assert settings.smtp_port == 587
     assert settings.smtp_username is None
-
-
-def test_boolean_fields_accept_false_variants(monkeypatch):
-    _set_required_env(monkeypatch)
-    monkeypatch.setenv("REGISTRATION_ENABLED", "false")
-    monkeypatch.setenv("PASSWORD_RESET_ENABLED", "0")
-
-    settings = get_settings()
-
-    assert settings.registration_enabled is False
-    assert settings.password_reset_enabled is False

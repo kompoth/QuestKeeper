@@ -44,6 +44,18 @@ class PermissionDeniedError(Exception):
     pass
 
 
+class CannotBanSelfError(Exception):
+    pass
+
+
+class CannotChangeOwnRoleError(Exception):
+    pass
+
+
+class InvalidStatusTransitionError(Exception):
+    pass
+
+
 async def get_entity_access(
     repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
 ) -> EntityAccess:

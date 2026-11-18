@@ -10,11 +10,14 @@ from app.domain.models import (
     EntityId,
     Map,
     PasswordReset,
-    PendingRegistration,
     PermissionLevel,
+    RegistrationConfirmation,
+    RuntimeSettings,
     Session,
     User,
     UserId,
+    UserRole,
+    UserStatus,
     World,
     WorldId,
     WorldInvite,
@@ -31,6 +34,43 @@ class UserRepository(Protocol):
         ...
 
     async def update_password(self, user_id: UserId, hashed_password: str) -> None: ...
+
+    async def list_page(self, offset: int, limit: int, search: str | None = None) -> Sequence[User]:
+        """One page of all users, ordered by email.
+
+        If `search` is given, restricts to users whose name or email contains it (case-insensitive).
+        """
+        ...
+
+    async def count(self, search: str | None = None) -> int:
+        """Total number of users matching `search` (see list_page), for paginating list_page()."""
+        ...
+
+    async def has_admin(self) -> bool:
+        """Whether any user currently holds the admin role - used to gate seed-admin bootstrapping."""
+        ...
+
+    async def update_role(self, user_id: UserId, role: UserRole) -> None:
+        """Raises UserNotFoundError if the user doesn't exist."""
+        ...
+
+    async def update_status(self, user_id: UserId, status: UserStatus) -> None:
+        """Raises UserNotFoundError if the user doesn't exist."""
+        ...
+
+    async def update_registration_pending(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        """Re-request case: refreshes name/password on an existing PENDING user.
+
+        Raises UserNotFoundError if the user doesn't exist.
+        """
+        ...
+
+    async def claim(self, user_id: UserId, name: str, hashed_password: str) -> None:
+        """Sets name/hashed_password and status=ACTIVE.
+
+        Raises UserNotFoundError if the user doesn't exist.
+        """
+        ...
 
 
 class WorldRepository(Protocol):
@@ -102,10 +142,6 @@ class EntityPermissionRepository(Protocol):
 class WorldInviteRepository(Protocol):
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
 
-    async def get_pending_for_email(self, email: str) -> Sequence[WorldInvite]:
-        """Pending (unaccepted) invites addressed to `email`, resolved or not."""
-        ...
-
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         """Every invite for the world, pending or accepted - for the owner's settings view."""
         ...
@@ -115,14 +151,10 @@ class WorldInviteRepository(Protocol):
         ...
 
     async def create(self, invite: WorldInvite) -> WorldInvite:
-        """Creates the pending invite, or upserts in place (preserving id) if one for (world, invitee_email) exists.
+        """Creates the pending invite, or upserts in place (preserving id) if one for (world, invitee) exists.
 
         Returns the persisted invite - its `id` may differ from `invite.id` on an upsert.
         """
-        ...
-
-    async def link_pending_to_user(self, email: str, user_id: UserId) -> None:
-        """Backfills `invitee_id` onto every pending, not-yet-resolved invite addressed to `email`."""
         ...
 
     async def accept(self, invite: WorldInvite) -> None: ...
@@ -152,16 +184,24 @@ class PasswordResetRepository(Protocol):
     async def delete(self, token: str) -> None: ...
 
 
-class PendingRegistrationRepository(Protocol):
-    async def create(self, pending: PendingRegistration) -> PendingRegistration:
-        """Creates, or replaces in place (fresh token) if an unconfirmed row for this email exists."""
+class RegistrationConfirmationRepository(Protocol):
+    async def create(self, confirmation: RegistrationConfirmation) -> None:
+        """Replaces any outstanding request for the same user_id - at most one valid token per user."""
         ...
 
-    async def get_by_token(self, token: str) -> PendingRegistration | None:
-        """The pending registration for an unexpired token, or None."""
+    async def get(self, token: str) -> RegistrationConfirmation | None:
+        """The confirmation request, or None if it doesn't exist or has expired."""
         ...
 
     async def delete(self, token: str) -> None: ...
+
+
+class RuntimeSettingsRepository(Protocol):
+    async def get(self) -> RuntimeSettings:
+        """The current settings, or defaults if they've never been written."""
+        ...
+
+    async def update(self, settings: RuntimeSettings) -> None: ...
 
 
 async def _noop_commit() -> None:
@@ -179,6 +219,7 @@ class Repositories:
     invites: WorldInviteRepository
     sessions: SessionRepository
     password_resets: PasswordResetRepository
-    pending_registrations: PendingRegistrationRepository
+    registration_confirmations: RegistrationConfirmationRepository
+    runtime_settings: RuntimeSettingsRepository
     # Durably persists writes made so far, for an operation that needs a mid-request commit point.
     commit: Callable[[], Awaitable[None]] = field(default=_noop_commit)

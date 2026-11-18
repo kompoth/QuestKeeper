@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -8,6 +8,12 @@ class UserRole(StrEnum):
     ADMIN = "admin"
     WARDEN = "warden"
     MEMBER = "member"
+
+
+class UserStatus(StrEnum):
+    ACTIVE = "active"
+    PENDING = "pending"
+    BANNED = "banned"
 
 
 UserId = str
@@ -21,6 +27,8 @@ class User(BaseModel):
     email: str
     hashed_password: str
     role: UserRole
+    status: UserStatus = UserStatus.ACTIVE
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Session(BaseModel):
@@ -93,18 +101,15 @@ class EntityPermission(BaseModel):
 class WorldInvite(BaseModel):
     """A pending invite to join a world, carrying the initial grant.
 
-    May be issued for an existing user (`invitee_id` set immediately) or for a bare email
-    address with no account yet (`invitee_id` is None until the invitee signs up via
-    `confirmation_token`). `invitee_email` is the address the invite was actually sent to -
-    frozen at creation for audit/display; once `invitee_id` is resolved, permission/accept
-    logic reads through `invitee_id` only. Takes effect - adding the invitee as a world
-    member with the given EntityPermission - only once accepted.
+    `invitee_id` always points at a real `users` row - a pending placeholder (PENDING status)
+    is created up front for an invitee with no account yet; its `email` is the address the
+    invite was sent to. Takes effect - adding the invitee as a world member with the given
+    EntityPermission - only once accepted.
     """
 
     id: str
     world_id: WorldId
-    invitee_id: UserId | None = None
-    invitee_email: str
+    invitee_id: UserId
     entity_id: EntityId
     level: PermissionLevel
     accepted: bool = False
@@ -120,11 +125,16 @@ class PasswordReset(BaseModel):
     expires_at: datetime
 
 
-class PendingRegistration(BaseModel):
-    """An unconfirmed self-registration - the account isn't created until the token is confirmed."""
+class RegistrationConfirmation(BaseModel):
+    """A single-use, expiring token authorizing one self-registration email confirmation."""
 
     token: str
-    name: str
-    email: str
-    hashed_password: str
+    user_id: UserId
     expires_at: datetime
+
+
+class RuntimeSettings(BaseModel):
+    """Admin-editable toggles that can change without a redeploy."""
+
+    registration_enabled: bool
+    password_reset_enabled: bool

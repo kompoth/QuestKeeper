@@ -63,13 +63,15 @@ def require_csrf(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Missing or invalid CSRF token")
 
 
-def require_registration_enabled() -> None:
-    if not get_settings().registration_enabled:
+async def require_registration_enabled(repos: Repos) -> None:
+    settings = await repos.runtime_settings.get()
+    if not settings.registration_enabled:
         raise HTTPException(status_code=403, detail="Registration is currently disabled")
 
 
-def require_password_reset_enabled() -> None:
-    if not get_settings().password_reset_enabled:
+async def require_password_reset_enabled(repos: Repos) -> None:
+    settings = await repos.runtime_settings.get()
+    if not settings.password_reset_enabled:
         raise HTTPException(status_code=403, detail="Password reset is currently disabled")
 
 

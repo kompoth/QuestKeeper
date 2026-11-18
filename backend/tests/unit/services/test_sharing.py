@@ -1,6 +1,6 @@
 import pytest
 
-from app.domain.models import Entity, EntityPermission, PermissionLevel, User, UserRole, World, WorldInvite
+from app.domain.models import Entity, EntityPermission, PermissionLevel, User, UserRole, UserStatus, World, WorldInvite
 from app.domain.repositories import Repositories
 from app.services.access import EntityNotFoundError, InviteNotFoundError, PermissionDeniedError, WorldNotFoundError
 from app.services.sharing import (
@@ -18,7 +18,8 @@ from tests.unit.services.fakes import (
     FakeEntityRepository,
     FakeMailer,
     FakePasswordResetRepository,
-    FakePendingRegistrationRepository,
+    FakeRegistrationConfirmationRepository,
+    FakeRuntimeSettingsRepository,
     FakeSessionRepository,
     FakeUserRepository,
     FakeWorldInviteRepository,
@@ -42,7 +43,8 @@ def make_repos(*, world=None, entity=None, users=None, invites=None) -> Reposito
         invites=invites if invites is not None else FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
 
 
@@ -119,7 +121,6 @@ async def test_create_invite_succeeds_for_world_owner_and_sends_existing_user_ma
     )
 
     assert invite.invitee_id == GRANTEE_ID
-    assert invite.invitee_email == "grantee@example.com"
     assert invite.confirmation_token is None
     pending = await repos.invites.get_pending_for_user(GRANTEE_ID)
     assert invite in pending
@@ -127,7 +128,7 @@ async def test_create_invite_succeeds_for_world_owner_and_sends_existing_user_ma
     assert mailer.new_user_invites == []
 
 
-async def test_create_invite_creates_pending_email_invite_and_sends_mail_when_invitee_email_unknown():
+async def test_create_invite_creates_pending_placeholder_user_and_sends_mail_when_invitee_unknown():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
     repos = make_repos(world=world, entity=entity)
@@ -138,8 +139,10 @@ async def test_create_invite_creates_pending_email_invite_and_sends_mail_when_in
         repos, mailer, OWNER_ID, WORLD_ID, "missing@example.com", grant, frontend_origin=FRONTEND_ORIGIN
     )
 
-    assert invite.invitee_id is None
-    assert invite.invitee_email == "missing@example.com"
+    placeholder = await repos.users.get_by_email("missing@example.com")
+    assert placeholder is not None
+    assert placeholder.status == UserStatus.PENDING
+    assert invite.invitee_id == placeholder.id
     assert invite.confirmation_token is not None
     assert invite.token_expires_at is not None
     assert len(mailer.new_user_invites) == 1
@@ -150,21 +153,23 @@ async def test_create_invite_creates_pending_email_invite_and_sends_mail_when_in
     assert mailer.existing_user_invites == []
 
 
-async def test_create_invite_reuses_pending_row_when_re_inviting_same_email():
+async def test_create_invite_reuses_pending_placeholder_when_re_inviting_same_email():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     entity_a = Entity(id="e1", world_id=WORLD_ID, name="Entity A")
     entity_b = Entity(id="e2", world_id=WORLD_ID, name="Entity B")
     entities = FakeEntityRepository(entities_by_id={entity_a.id: entity_a, entity_b.id: entity_b})
     invites = FakeWorldInviteRepository()
+    users = FakeUserRepository()
     repos = Repositories(
-        users=FakeUserRepository(),
+        users=users,
         worlds=FakeWorldRepository(worlds_by_id={world.id: world}),
         entities=entities,
         permissions=FakeEntityPermissionRepository(),
         invites=invites,
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
     )
     mailer = FakeMailer()
 
@@ -179,8 +184,10 @@ async def test_create_invite_reuses_pending_row_when_re_inviting_same_email():
 
     assert len(invites.invites) == 1
     assert second.id == first.id
+    assert second.invitee_id == first.invitee_id
     assert second.entity_id == "e2"
     assert second.level == PermissionLevel.WRITE
+    assert await users.count() == 1
 
 
 async def test_create_invite_raises_when_entity_not_found():
@@ -209,19 +216,12 @@ async def test_create_invite_raises_when_caller_is_not_owner():
 
 async def test_list_invites_for_world_returns_all_invites_including_accepted():
     pending = WorldInvite(
-        id="i1",
-        world_id=WORLD_ID,
-        invitee_id=None,
-        invitee_email="a@example.com",
-        entity_id=ENTITY_ID,
-        level=PermissionLevel.READ,
-        accepted=False,
+        id="i1", world_id=WORLD_ID, invitee_id="a", entity_id=ENTITY_ID, level=PermissionLevel.READ, accepted=False
     )
     accepted = WorldInvite(
         id="i2",
         world_id=WORLD_ID,
         invitee_id=GRANTEE_ID,
-        invitee_email="b@example.com",
         entity_id=ENTITY_ID,
         level=PermissionLevel.WRITE,
         accepted=True,
@@ -244,23 +244,9 @@ async def test_list_invites_for_world_raises_when_caller_is_not_owner():
 
 async def test_accept_invite_succeeds_for_the_invitee():
     invites = FakeWorldInviteRepository()
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=invites,
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
-    )
+    repos = make_repos(invites=invites)
     invite = WorldInvite(
-        id="i1",
-        world_id=WORLD_ID,
-        invitee_id=GRANTEE_ID,
-        invitee_email="grantee@example.com",
-        entity_id=ENTITY_ID,
-        level=PermissionLevel.READ,
+        id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ
     )
 
     await accept_invite(repos, GRANTEE_ID, invite)
@@ -271,12 +257,7 @@ async def test_accept_invite_succeeds_for_the_invitee():
 async def test_accept_invite_raises_when_caller_is_not_the_invitee():
     repos = make_repos()
     invite = WorldInvite(
-        id="i1",
-        world_id=WORLD_ID,
-        invitee_id=GRANTEE_ID,
-        invitee_email="grantee@example.com",
-        entity_id=ENTITY_ID,
-        level=PermissionLevel.READ,
+        id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ
     )
 
     with pytest.raises(PermissionDeniedError):
@@ -287,33 +268,12 @@ async def test_list_pending_invites_returns_only_the_callers_pending_invites():
     invites = FakeWorldInviteRepository(
         invites=[
             WorldInvite(
-                id="i1",
-                world_id=WORLD_ID,
-                invitee_id=GRANTEE_ID,
-                invitee_email="grantee@example.com",
-                entity_id=ENTITY_ID,
-                level=PermissionLevel.READ,
+                id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ
             ),
-            WorldInvite(
-                id="i2",
-                world_id="w2",
-                invitee_id=OTHER_USER_ID,
-                invitee_email="other@example.com",
-                entity_id="e2",
-                level=PermissionLevel.WRITE,
-            ),
+            WorldInvite(id="i2", world_id="w2", invitee_id=OTHER_USER_ID, entity_id="e2", level=PermissionLevel.WRITE),
         ]
     )
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=invites,
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
-    )
+    repos = make_repos(invites=invites)
 
     result = await list_pending_invites(repos, GRANTEE_ID)
 
@@ -324,35 +284,16 @@ async def test_accept_invite_for_world_accepts_the_matching_pending_invite():
     invites = FakeWorldInviteRepository(
         invites=[
             WorldInvite(
-                id="i1",
-                world_id=WORLD_ID,
-                invitee_id=GRANTEE_ID,
-                invitee_email="grantee@example.com",
-                entity_id=ENTITY_ID,
-                level=PermissionLevel.READ,
+                id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ
             )
         ]
     )
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=invites,
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        pending_registrations=FakePendingRegistrationRepository(),
-    )
+    repos = make_repos(invites=invites)
 
     await accept_invite_for_world(repos, GRANTEE_ID, WORLD_ID)
 
     accepted_invite = WorldInvite(
-        id="i1",
-        world_id=WORLD_ID,
-        invitee_id=GRANTEE_ID,
-        invitee_email="grantee@example.com",
-        entity_id=ENTITY_ID,
-        level=PermissionLevel.READ,
+        id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.READ
     )
     assert accepted_invite in invites.invites
 
