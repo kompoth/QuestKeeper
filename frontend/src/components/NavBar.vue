@@ -13,16 +13,18 @@
   </v-app-bar>
 
   <v-navigation-drawer v-if="items.length > 0" v-model="drawer" :temporary="mobile" width="300">
-    <v-text-field
-      v-model="search"
-      class="ma-2"
-      clearable
-      density="compact"
-      hide-details
-      label="Search"
-      prepend-inner-icon="mdi-magnify"
-      variant="outlined"
-    />
+    <template #prepend>
+      <v-text-field
+        v-model="search"
+        class="ma-2"
+        clearable
+        density="compact"
+        hide-details
+        label="Search"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+      />
+    </template>
 
     <v-treeview
       density="compact"

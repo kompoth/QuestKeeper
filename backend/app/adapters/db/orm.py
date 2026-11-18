@@ -35,6 +35,7 @@ class WorldRow(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
     pic: Mapped[str | None] = mapped_column(String(512), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, index=True, default=None)
 
 
 class EntityRow(Base):

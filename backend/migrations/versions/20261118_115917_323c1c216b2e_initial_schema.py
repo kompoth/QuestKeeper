@@ -78,12 +78,14 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("pic", sa.String(length=512), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(
             ["owner_id"],
             ["users.id"],
         ),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(op.f("ix_worlds_deleted_at"), "worlds", ["deleted_at"], unique=False)
     op.create_table(
         "entities",
         sa.Column("id", sa.String(length=36), nullable=False),

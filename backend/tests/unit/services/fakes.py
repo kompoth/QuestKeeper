@@ -59,6 +59,9 @@ class FakeWorldRepository:
     async def update(self, world: World) -> None:
         self.worlds_by_id[world.id] = world
 
+    async def delete(self, world_id: WorldId) -> None:
+        self.worlds_by_id.pop(world_id, None)
+
 
 @dataclass
 class FakeEntityRepository:

@@ -36,3 +36,7 @@ export async function createWorld (name: string, description: string): Promise<W
 export async function updateWorld (id: string, name: string, description: string): Promise<World> {
   return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`, { method: 'PATCH', body: { name, description } }))
 }
+
+export async function deleteWorld (id: string): Promise<void> {
+  await apiFetch<void>(`/worlds/${id}`, { method: 'DELETE' })
+}

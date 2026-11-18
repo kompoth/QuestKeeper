@@ -5,11 +5,16 @@ from app.config import Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings_cache():
+def _reset_settings_cache(monkeypatch):
     """get_settings() is process-cached; these tests mutate the env per-test and need a clean
     cache before (to force a fresh read) and after (so the next test isn't left with this one's
     cached value).
+
+    Also disables dotenv loading: a developer's local `backend/.env` would otherwise be read as a
+    fallback for any env var these tests delete, making "missing"/"default" assertions depend on
+    whatever that file happens to contain.
     """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     Settings.settings_clear_cache()
     yield
     Settings.settings_clear_cache()

@@ -49,3 +49,13 @@ async def update_world(repos: Repositories, user_id: UserId, world: World) -> No
 
     updated = existing.model_copy(update={"name": world.name, "description": world.description, "pic": world.pic})
     await repos.worlds.update(updated)
+
+
+async def delete_world(repos: Repositories, user_id: UserId, world_id: WorldId) -> None:
+    world = await repos.worlds.get(world_id)
+    if world is None:
+        raise WorldNotFoundError(world_id)
+    if not permissions.is_owner(world, user_id):
+        raise PermissionDeniedError(user_id, world_id)
+
+    await repos.worlds.delete(world_id)

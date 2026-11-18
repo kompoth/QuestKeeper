@@ -1,7 +1,7 @@
 <template>
   <NavBar app-title="Questkeeper" @logout="handleLogout" />
 
-  <v-main>
+  <v-main scrollable>
     <v-container>
       <h1 class="text-h4 mb-4">Worlds</h1>
 
@@ -63,6 +63,26 @@
         />
 
         <v-textarea v-model="worldFormDescription" label="Description" variant="outlined" />
+
+        <v-divider class="my-4" />
+
+        <div class="text-subtitle-1 text-error font-weight-bold mb-2">Danger zone</div>
+
+        <p class="text-body-2 mb-4">
+          Deleting <strong>{{ settingsWorld?.name }}</strong> is irreversible. Type its name below to confirm.
+        </p>
+
+        <v-text-field v-model="deleteConfirmation" label="World name" variant="outlined" />
+
+        <v-btn
+          block
+          color="error"
+          :disabled="!canDeleteWorld"
+          variant="flat"
+          @click="handleDeleteWorld"
+        >
+          Delete this world
+        </v-btn>
       </v-card-text>
 
       <v-card-actions>
@@ -76,9 +96,9 @@
 
 <script lang="ts" setup>
   import type { World } from '@/types/world'
-  import { onMounted, ref } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { useRouter } from 'vue-router'
-  import { createWorld, listWorlds, updateWorld } from '@/api/worlds'
+  import { createWorld, deleteWorld, listWorlds, updateWorld } from '@/api/worlds'
   import NavBar from '@/components/NavBar.vue'
   import { useAuth } from '@/composables/useAuth'
   import { useWorldFormDialog } from '@/composables/useWorldFormDialog'
@@ -102,6 +122,9 @@
   const { worldFormOpen, worldFormName, worldFormDescription, openWorldFormDialog, confirmWorldForm, cancelWorldForm } = useWorldFormDialog()
 
   const settingsWorld = ref<World>()
+  const deleteConfirmation = ref('')
+
+  const canDeleteWorld = computed(() => deleteConfirmation.value !== '' && deleteConfirmation.value === settingsWorld.value?.name)
 
   async function handleCreateWorld () {
     await createWorld('New World', '')
@@ -110,10 +133,18 @@
 
   async function handleSettings (world: World) {
     settingsWorld.value = world
+    deleteConfirmation.value = ''
     const result = await openWorldFormDialog(world)
     if (result === undefined) return
     await updateWorld(world.id, result.name, result.description)
     await refreshWorlds()
+  }
+
+  async function handleDeleteWorld () {
+    if (!settingsWorld.value || !canDeleteWorld.value) return
+    await deleteWorld(settingsWorld.value.id)
+    await refreshWorlds()
+    cancelWorldForm()
   }
 
   async function handleLogout () {

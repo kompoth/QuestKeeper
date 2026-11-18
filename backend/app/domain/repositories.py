@@ -44,6 +44,10 @@ class WorldRepository(Protocol):
 
     async def update(self, world: World) -> None: ...
 
+    async def delete(self, world_id: WorldId) -> None:
+        """Soft-deletes the world; its entities are left untouched but become unreachable."""
+        ...
+
 
 class EntityRepository(Protocol):
     async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:

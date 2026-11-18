@@ -151,17 +151,21 @@ class SqlWorldRepository:
 
     async def get(self, world_id: WorldId) -> World | None:
         row = await self._session.get(WorldRow, world_id)
-        return _world_from_row(row) if row else None
+        if row is None or row.deleted_at is not None:
+            return None
+        return _world_from_row(row)
 
     async def list_for_user(self, user_id: UserId) -> Sequence[World]:
-        owned = await self._session.execute(select(WorldRow).where(WorldRow.owner_id == user_id))
+        owned = await self._session.execute(
+            select(WorldRow).where(WorldRow.owner_id == user_id, WorldRow.deleted_at.is_(None))
+        )
         worlds_by_id = {row.id: row for row in owned.scalars()}
 
         granted = await self._session.execute(
             select(WorldRow)
             .join(EntityRow, EntityRow.world_id == WorldRow.id)
             .join(EntityPermissionRow, EntityPermissionRow.entity_id == EntityRow.id)
-            .where(EntityPermissionRow.user_id == user_id)
+            .where(EntityPermissionRow.user_id == user_id, WorldRow.deleted_at.is_(None))
             .distinct()
         )
         for row in granted.scalars():
@@ -189,6 +193,11 @@ class SqlWorldRepository:
         row.name = world.name
         row.description = world.description
         row.pic = world.pic
+
+    async def delete(self, world_id: WorldId) -> None:
+        await self._session.execute(
+            update(WorldRow).where(WorldRow.id == world_id).values(deleted_at=datetime.now(UTC))
+        )
 
 
 class SqlEntityRepository:

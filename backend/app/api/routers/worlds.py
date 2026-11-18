@@ -2,12 +2,12 @@
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import CurrentUser, Repos, require_csrf
 from app.api.schemas import CreateWorldRequest, UpdateWorldRequest
 from app.domain.models import World, WorldId
-from app.services.worlds import create_world, get_world, list_worlds, update_world
+from app.services.worlds import create_world, delete_world, get_world, list_worlds, update_world
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -33,3 +33,8 @@ async def update(world_id: WorldId, body: UpdateWorldRequest, user: CurrentUser,
     patch = World(id=world_id, owner_id="", name=body.name, description=body.description, pic=body.pic)
     await update_world(repos, user.id, patch)
     return await get_world(repos, user.id, world_id)
+
+
+@router.delete("/{world_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+async def delete(world_id: WorldId, user: CurrentUser, repos: Repos) -> None:
+    await delete_world(repos, user.id, world_id)
