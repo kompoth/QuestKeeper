@@ -1,0 +1,2 @@
+# Local environment config, shared by backend and frontend
+.env

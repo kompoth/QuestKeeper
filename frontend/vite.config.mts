@@ -6,6 +6,8 @@ import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // .env lives at the repo root, shared with the backend.
+  envDir: fileURLToPath(new URL('..', import.meta.url)),
   plugins: [
     Vue({
       template: { transformAssetUrls },

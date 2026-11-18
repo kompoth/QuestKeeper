@@ -24,6 +24,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Questkeeper is a tabletop campaign knowledge base: wiki-style entities with articles and maps, organized per "world".
 - Monorepo with independent `backend/` and `frontend/` projects.
+- One `.env` at the repo root (gitignored; `.env.example` documents it) is shared by both — backend resolves it by absolute path (`app/config.py`), frontend via Vite's `envDir` (`vite.config.mts`), so it's found regardless of which directory a command is run from.
+- Only `VITE_`-prefixed vars in that file are exposed to frontend client code; backend vars stay server-side. Backend's `Settings` uses `extra="ignore"` since the shared file carries frontend-only vars it doesn't declare as fields.
 
 ## Backend (`backend/`)
 
@@ -39,9 +41,9 @@ Commands (run from `backend/`):
 - Format: `uv run ruff format .`
 - Type check: `uv run ty check .`
 - Run unit tests: `uv run pytest tests/unit`
-- Run integration tests (requires `DATABASE_URL` pointing at a reachable MySQL instance): `uv run pytest tests/integration`
+- Run integration tests (requires `DATABASE_URL` pointing at a reachable MariaDB instance): `uv run pytest tests/integration`
 - The integration suite calls `Base.metadata.create_all`/`drop_all` on whatever `DATABASE_URL` resolves to (from `.env` if not overridden) — never point it at a DB used for manual/dev testing, or the suite's teardown wipes it.
-- Local convenience: a disposable `questkeeper-mysql-test` container (mysql:8, db `questkeeper_test`, port 3308) mirrors CI's isolated service container; run tests against it with `DATABASE_URL=mysql+aiomysql://root:root@127.0.0.1:3308/questkeeper_test uv run pytest tests/integration`.
+- Local convenience: a disposable `questkeeper-mariadb-test` container (mariadb:11, db `questkeeper_test`, port 3308) mirrors CI's isolated service container; run tests against it with `DATABASE_URL=mysql+aiomysql://root:root@127.0.0.1:3308/questkeeper_test uv run pytest tests/integration`.
 
 ### Domain model (`app/core/models.py`)
 

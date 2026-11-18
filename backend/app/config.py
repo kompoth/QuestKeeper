@@ -1,10 +1,17 @@
 """Env-driven configuration via pydantic-settings."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# .env lives at the repo root, shared with the frontend - resolved from this file's own path
+# rather than the CWD, so it's found regardless of where the process is launched from.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    # extra="ignore": the shared .env also carries frontend-only vars (e.g. VITE_API_BASE_URL).
+    model_config = SettingsConfigDict(env_file=_REPO_ROOT / ".env", extra="ignore")
 
     frontend_origin: str
     cookie_secure: bool = True

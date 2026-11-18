@@ -10,6 +10,17 @@ export interface NavItemHandlers {
 
 export const refreshNavItemsKey: InjectionKey<() => Promise<void>> = Symbol('refreshNavItems')
 
+export function isEntityOrDescendant (entitiesById: Map<string, Entity>, ancestorId: string, candidateId: string): boolean {
+  let current: string | undefined = candidateId
+  while (current !== undefined) {
+    if (current === ancestorId) {
+      return true
+    }
+    current = entitiesById.get(current)?.parent ?? undefined
+  }
+  return false
+}
+
 export function toNavItem (
   worldId: string,
   entity: Entity,

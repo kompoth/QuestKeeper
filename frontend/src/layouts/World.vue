@@ -21,6 +21,7 @@
 </template>
 
 <script lang="ts" setup>
+  import type { Entity } from '@/types/entity'
   import type { NavItem } from '@/types/nav-item'
   import type { World } from '@/types/world'
   import { computed, provide, ref, watchEffect } from 'vue'
@@ -30,7 +31,7 @@
   import NavBar from '@/components/NavBar.vue'
   import { useAuth } from '@/composables/useAuth'
   import { useRenameDialog } from '@/composables/useRenameDialog'
-  import { refreshNavItemsKey, toNavItem } from '@/utils/nav'
+  import { isEntityOrDescendant, refreshNavItemsKey, toNavItem } from '@/utils/nav'
 
   const { renameDialogOpen, renameDialogTitle, openRenameDialog, confirmRename, cancelRename } = useRenameDialog()
   const { logout } = useAuth()
@@ -49,13 +50,14 @@
   const navItems = ref<NavItem[]>([])
 
   let navItemsRequestId = 0
+  let entitiesById = new Map<string, Entity>()
 
   async function refreshNavItems () {
     const requestId = ++navItemsRequestId
     const entities = await listEntities(worldId.value)
     if (requestId !== navItemsRequestId) return // a newer refresh already started, discard this stale result
 
-    const entitiesById = new Map(entities.map(entity => [entity.id, entity]))
+    entitiesById = new Map(entities.map(entity => [entity.id, entity]))
     const handlers = { onRename: handleRename, onAddPage: handleAddPage, onDelete: handleDelete }
     navItems.value = [
       ...entities
@@ -84,8 +86,15 @@
   }
 
   async function handleDelete (entityId: string) {
+    const openEntityId = route.params.entityId as string | undefined
+    const shouldRedirect = openEntityId !== undefined && isEntityOrDescendant(entitiesById, entityId, openEntityId)
+
     await deleteEntity(worldId.value, entityId)
     await refreshNavItems()
+
+    if (shouldRedirect) {
+      router.push(`/w/${worldId.value}`)
+    }
   }
 
   async function handleLogout () {
