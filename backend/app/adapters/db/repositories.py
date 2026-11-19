@@ -43,7 +43,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError, UserNotFoundError
+from app.services.access import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
 
 _RUNTIME_SETTINGS_ID = "singleton"
 
@@ -257,6 +257,10 @@ class SqlWorldRepository:
                 pic=world.pic,
             )
         )
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise IdCollisionError(world.id) from exc
 
     async def update(self, world: World) -> None:
         row = await self._session.get(WorldRow, world.id)
@@ -341,6 +345,10 @@ class SqlEntityRepository:
                 updated_by=actor_id,
             )
         )
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise IdCollisionError(entity_id) from exc
 
     async def rename(self, entity_id: EntityId, name: str, actor_id: UserId) -> None:
         row = await self._session.get(EntityRow, entity_id)

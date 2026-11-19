@@ -11,12 +11,17 @@
         </v-toolbar-title>
 
         <div class="mr-5 d-flex ga-2">
-          <v-chip label @click="startRename">
+          <v-chip v-if="entity.access.write" label @click="startRename">
             <v-icon icon="mdi-form-textbox" start />
             Rename
           </v-chip>
 
-          <v-chip :color="entityEditable ? 'primary' : 'default'" label @click="entityEditable = !entityEditable">
+          <v-chip
+            v-if="entity.access.write"
+            :color="entityEditable ? 'primary' : 'default'"
+            label
+            @click="entityEditable = !entityEditable"
+          >
             <v-icon :icon="entityEditable ? 'mdi-pencil' : 'mdi-text-long'" start />
             {{ entityEditable ? 'Edit mode' : 'Reading mode' }}
           </v-chip>

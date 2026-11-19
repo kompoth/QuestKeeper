@@ -80,7 +80,9 @@ class WorldRepository(Protocol):
         """Worlds the user owns, plus worlds where they hold any permission grant."""
         ...
 
-    async def create(self, world: World) -> None: ...
+    async def create(self, world: World) -> None:
+        """Raises IdCollisionError if `world.id` already exists."""
+        ...
 
     async def update(self, world: World) -> None: ...
 
@@ -105,7 +107,10 @@ class EntityRepository(Protocol):
     async def create(
         self, world_id: WorldId, entity_id: EntityId, name: str, parent_id: EntityId | None, actor_id: UserId
     ) -> None:
-        """Creates the entity, recording `actor_id` as both its creator and its latest editor."""
+        """Creates the entity, recording `actor_id` as both its creator and its latest editor.
+
+        Raises IdCollisionError if `entity_id` already exists.
+        """
         ...
 
     async def rename(self, entity_id: EntityId, name: str, actor_id: UserId) -> None: ...

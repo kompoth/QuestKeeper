@@ -19,6 +19,7 @@
             </v-sheet>
 
             <v-btn
+              v-if="isOwner(world)"
               aria-label="World settings"
               class="position-absolute"
               color="surface"
@@ -117,7 +118,11 @@
   onMounted(refreshWorlds)
 
   const router = useRouter()
-  const { logout } = useAuth()
+  const { currentUser, logout } = useAuth()
+
+  function isOwner (world: World): boolean {
+    return world.ownerId === currentUser.value?.id
+  }
 
   const { worldFormOpen, worldFormName, worldFormDescription, openWorldFormDialog, confirmWorldForm, cancelWorldForm } = useWorldFormDialog()
 

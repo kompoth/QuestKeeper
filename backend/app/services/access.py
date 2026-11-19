@@ -56,6 +56,10 @@ class InvalidStatusTransitionError(Exception):
     pass
 
 
+class IdCollisionError(Exception):
+    """A newly generated World/Entity id already exists - the caller should regenerate and retry."""
+
+
 async def get_entity_access(
     repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
 ) -> EntityAccess:

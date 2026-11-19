@@ -1,5 +1,5 @@
 import type { Entity } from '@/types/entity'
-import type { NavItem } from '@/types/nav-item'
+import type { NavAction, NavItem } from '@/types/nav-item'
 import type { InjectionKey } from 'vue'
 
 export interface NavItemHandlers {
@@ -41,9 +41,9 @@ export function toNavItem (
       : undefined,
     // TODO: tailor which actions apply per entity (e.g. omit "Add page" once it already has one)
     actions: [
-      { title: 'Rename', icon: 'mdi-form-textbox', onClick: () => handlers.onRename(entity.id) },
-      { title: 'Add page', icon: 'mdi-file-plus', onClick: () => handlers.onAddPage(entity.id) },
-      { title: 'Delete', icon: 'mdi-delete', onClick: () => handlers.onDelete(entity.id) },
-    ],
+      entity.access.write && { title: 'Rename', icon: 'mdi-form-textbox', onClick: () => handlers.onRename(entity.id) },
+      entity.access.write && { title: 'Add page', icon: 'mdi-file-plus', onClick: () => handlers.onAddPage(entity.id) },
+      entity.access.canDelete && { title: 'Delete', icon: 'mdi-delete', onClick: () => handlers.onDelete(entity.id) },
+    ].filter((action): action is NavAction => action !== false),
   }
 }

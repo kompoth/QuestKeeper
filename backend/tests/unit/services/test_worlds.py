@@ -2,7 +2,7 @@ import pytest
 
 from app.domain.models import PermissionLevel, World
 from app.domain.repositories import Repositories
-from app.services.access import PermissionDeniedError, WorldNotFoundError
+from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError
 from app.services.worlds import create_world, get_world, list_worlds, update_world
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
@@ -113,6 +113,51 @@ async def test_create_world_persists_a_new_world_owned_by_the_caller():
     assert world.owner_id == OWNER_ID
     assert world.name == "My World"
     assert world.description == "A tale"
+
+
+async def test_create_world_generates_a_short_id():
+    repos = make_repos()
+
+    world_id = await create_world(repos, OWNER_ID, "My World")
+
+    assert len(world_id) == 12
+
+
+async def test_create_world_retries_once_on_id_collision():
+    worlds = FakeWorldRepository(collide_next_creates=1)
+    repos = Repositories(
+        users=FakeUserRepository(),
+        worlds=worlds,
+        entities=FakeEntityRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
+        sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
+    )
+
+    world_id = await create_world(repos, OWNER_ID, "My World")
+
+    assert world_id in worlds.worlds_by_id
+
+
+async def test_create_world_raises_after_a_second_id_collision():
+    worlds = FakeWorldRepository(collide_next_creates=2)
+    repos = Repositories(
+        users=FakeUserRepository(),
+        worlds=worlds,
+        entities=FakeEntityRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
+        sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
+    )
+
+    with pytest.raises(IdCollisionError):
+        await create_world(repos, OWNER_ID, "My World")
 
 
 async def test_update_world_raises_when_world_not_found():

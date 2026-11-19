@@ -2,7 +2,7 @@ import pytest
 
 from app.domain.models import Article, Entity, Map, MapPin, PermissionLevel, World
 from app.domain.repositories import Repositories
-from app.services.access import EntityNotFoundError, PermissionDeniedError, WorldNotFoundError
+from app.services.access import EntityNotFoundError, IdCollisionError, PermissionDeniedError, WorldNotFoundError
 from app.services.entities import (
     clear_article,
     clear_map,
@@ -33,10 +33,11 @@ ENTITY_ID = "e1"
 PARENT_ID = "e0"
 
 
-def make_repos(*, entity=None, world=None, ancestor_ids=(), grants=None) -> Repositories:
+def make_repos(*, entity=None, world=None, ancestor_ids=(), grants=None, collide_next_creates=0) -> Repositories:
     entities = FakeEntityRepository(
         entities_by_id={entity.id: entity} if entity else {},
         ancestor_ids_by_entity={entity.id: list(ancestor_ids)} if entity else {},
+        collide_next_creates=collide_next_creates,
     )
     worlds = FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
     permissions = FakeEntityPermissionRepository(grants_by_user={USER_ID: grants} if grants is not None else {})
@@ -60,7 +61,7 @@ async def test_list_entities_succeeds_for_world_owner():
 
     result = await list_entities(repos, USER_ID, WORLD_ID)
 
-    assert [found.id for found in result] == [ENTITY_ID]
+    assert [found.id for found, _ in result] == [ENTITY_ID]
 
 
 async def test_list_entities_succeeds_for_a_user_with_any_grant_in_the_world():
@@ -70,7 +71,18 @@ async def test_list_entities_succeeds_for_a_user_with_any_grant_in_the_world():
 
     result = await list_entities(repos, USER_ID, WORLD_ID)
 
-    assert [found.id for found in result] == [ENTITY_ID]
+    assert [found.id for found, _ in result] == [ENTITY_ID]
+
+
+async def test_list_entities_reports_write_access_from_the_callers_grant():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    repos = make_repos(entity=entity, world=world, grants={ENTITY_ID: PermissionLevel.WRITE})
+
+    [(_, access)] = await list_entities(repos, USER_ID, WORLD_ID)
+
+    assert access.read is True
+    assert access.write is True
 
 
 async def test_list_entities_raises_when_caller_has_no_grants_in_the_world():
@@ -93,9 +105,10 @@ async def test_get_entity_succeeds_with_read_access():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     repos = make_repos(entity=entity, world=world, grants={ENTITY_ID: PermissionLevel.READ})
 
-    found = await get_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+    found, access = await get_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
 
     assert found == entity
+    assert access.read is True
 
 
 async def test_get_entity_raises_without_read_access():
@@ -138,6 +151,33 @@ async def test_create_entity_as_root_raises_when_world_not_found():
     repos = make_repos()
 
     with pytest.raises(WorldNotFoundError):
+        await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
+
+
+async def test_create_entity_generates_a_short_id():
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(world=world)
+
+    entity_id = await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
+
+    assert len(entity_id) == 12
+
+
+async def test_create_entity_retries_once_on_id_collision():
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(world=world, collide_next_creates=1)
+
+    entity_id = await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
+
+    entity = await repos.entities.get(WORLD_ID, entity_id)
+    assert entity is not None
+
+
+async def test_create_entity_raises_after_a_second_id_collision():
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(world=world, collide_next_creates=2)
+
+    with pytest.raises(IdCollisionError):
         await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
 
 

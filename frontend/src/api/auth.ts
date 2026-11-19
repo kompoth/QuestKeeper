@@ -38,3 +38,7 @@ export async function getCurrentUser (): Promise<User> {
 export async function resetPassword (token: string, newPassword: string): Promise<void> {
   await apiFetch<null>('/auth/password-reset', { method: 'POST', body: { token, new_password: newPassword } })
 }
+
+export async function requestPasswordRecovery (email: string): Promise<void> {
+  await apiFetch<null>('/auth/password-recovery', { method: 'POST', body: { email } })
+}

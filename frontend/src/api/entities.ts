@@ -7,6 +7,12 @@ interface MapPinDto {
   y: number
 }
 
+interface EntityAccessDto {
+  read: boolean
+  write: boolean
+  can_delete: boolean
+}
+
 interface EntityDto {
   id: string
   world_id: string
@@ -19,6 +25,7 @@ interface EntityDto {
   updated_at: string | null
   created_by: string | null
   updated_by: string | null
+  access: EntityAccessDto
 }
 
 function toEntity (dto: EntityDto): Entity {
@@ -39,6 +46,7 @@ function toEntity (dto: EntityDto): Entity {
     updatedAt: dto.updated_at,
     createdBy: dto.created_by,
     updatedBy: dto.updated_by,
+    access: { read: dto.access.read, write: dto.access.write, canDelete: dto.access.can_delete },
   }
 }
 
@@ -51,7 +59,8 @@ export async function getEntity (worldId: string, entityId: string): Promise<Ent
   try {
     return toEntity(await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}`))
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
+    // 403: an ancestor the caller lacks read access to (e.g. walking a breadcrumb path) - same "unavailable" outcome as 404.
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
       return undefined
     }
     throw error

@@ -1,12 +1,12 @@
 """World creation, listing, and ownership-gated updates."""
 
+import secrets
 from collections.abc import Sequence
-from uuid import uuid4
 
 from app.domain import permissions
 from app.domain.models import UserId, World, WorldId
 from app.domain.repositories import Repositories
-from app.services.access import PermissionDeniedError, WorldNotFoundError
+from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError
 
 
 async def list_worlds(repos: Repositories, user_id: UserId) -> Sequence[World]:
@@ -31,8 +31,13 @@ async def get_world(repos: Repositories, user_id: UserId, world_id: WorldId) -> 
 async def create_world(
     repos: Repositories, owner_id: UserId, name: str, description: str | None = None, pic: str | None = None
 ) -> WorldId:
-    world = World(id=str(uuid4()), owner_id=owner_id, name=name, description=description, pic=pic)
-    await repos.worlds.create(world)
+    world = World(id=secrets.token_urlsafe(9), owner_id=owner_id, name=name, description=description, pic=pic)
+    try:
+        await repos.worlds.create(world)
+    except IdCollisionError:
+        # Vanishingly unlikely - regenerate and retry exactly once rather than fail the request.
+        world = world.model_copy(update={"id": secrets.token_urlsafe(9)})
+        await repos.worlds.create(world)
     return world.id
 
 

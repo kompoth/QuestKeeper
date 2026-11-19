@@ -1,7 +1,8 @@
 """Request/response schemas for shapes the domain models don't fit directly.
 
-`World`, `Entity`, and `EntityPermission` are returned or accepted as-is elsewhere — they're
-already clean Pydantic models with nothing sensitive to hide. `WorldInvite` is not: it carries
+`World` and `EntityPermission` are returned or accepted as-is elsewhere — they're already clean
+Pydantic models with nothing sensitive to hide. `Entity` is wrapped by `EntityOut` below, to carry
+the caller's resolved access alongside it. `WorldInvite` is not returned as-is either: it carries
 `confirmation_token` (a credential) and `invitee_id` (privacy-sensitive) - see `InviteSummary`
 and `PendingInviteOut` below, which redact both.
 """
@@ -11,6 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.domain.models import (
+    Entity,
     EntityId,
     Map,
     MapPin,
@@ -22,6 +24,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
+from app.domain.permissions import EntityAccess
 
 
 class UserOut(BaseModel):
@@ -48,6 +51,26 @@ class UpdateWorldRequest(BaseModel):
     name: str
     description: str | None = None
     pic: str | None = None
+
+
+class EntityAccessOut(BaseModel):
+    read: bool
+    write: bool
+    can_delete: bool
+
+    @classmethod
+    def from_access(cls, access: EntityAccess) -> EntityAccessOut:
+        return cls(read=access.read, write=access.write, can_delete=access.can_delete)
+
+
+class EntityOut(Entity):
+    """`Entity` plus the caller's resolved access to it, for permission-aware frontend UI."""
+
+    access: EntityAccessOut
+
+    @classmethod
+    def from_entity(cls, entity: Entity, access: EntityAccess) -> EntityOut:
+        return cls(**entity.model_dump(), access=EntityAccessOut.from_access(access))
 
 
 class CreateEntityRequest(BaseModel):

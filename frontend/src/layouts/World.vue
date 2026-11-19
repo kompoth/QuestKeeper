@@ -34,7 +34,7 @@
   import { isEntityOrDescendant, refreshNavItemsKey, toNavItem } from '@/utils/nav'
 
   const { renameDialogOpen, renameDialogTitle, openRenameDialog, confirmRename, cancelRename } = useRenameDialog()
-  const { logout } = useAuth()
+  const { currentUser, logout } = useAuth()
 
   const route = useRoute()
   const router = useRouter()
@@ -46,6 +46,7 @@
     world.value = await getWorld(worldId.value)
   })
   const appTitle = computed(() => world.value?.name ?? 'Questkeeper')
+  const isOwner = computed(() => world.value !== undefined && world.value.ownerId === currentUser.value?.id)
 
   const navItems = ref<NavItem[]>([])
 
@@ -54,6 +55,7 @@
 
   async function refreshNavItems () {
     const requestId = ++navItemsRequestId
+    const canAddRootPage = isOwner.value // read before the await so watchEffect tracks it
     const entities = await listEntities(worldId.value)
     if (requestId !== navItemsRequestId) return // a newer refresh already started, discard this stale result
 
@@ -63,7 +65,7 @@
       ...entities
         .filter(entity => entity.parent === null)
         .map(entity => toNavItem(worldId.value, entity, entitiesById, handlers)),
-      { id: 'add-page', title: 'Add page', icon: 'mdi-plus', onClick: () => handleAddPage() },
+      ...canAddRootPage ? [{ id: 'add-page', title: 'Add page', icon: 'mdi-plus', onClick: () => handleAddPage() }] : [],
     ]
   }
 

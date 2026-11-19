@@ -1,29 +1,54 @@
 """Orchestrates entity mutations with the access checks from `services.access`."""
 
+import secrets
 from collections.abc import Sequence
-from uuid import uuid4
 
 from app.domain import permissions
 from app.domain.models import Article, Entity, EntityId, Map, UserId, WorldId
+from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
-from app.services.access import PermissionDeniedError, WorldNotFoundError, get_entity_access
+from app.services.access import (
+    FULL_ACCESS,
+    IdCollisionError,
+    PermissionDeniedError,
+    WorldNotFoundError,
+    get_entity_access,
+)
 
 
-async def list_entities(repos: Repositories, user_id: UserId, world_id: WorldId) -> Sequence[Entity]:
-    """Every entity in the world, unfiltered by grant; requires world membership (owner or any grant)."""
+async def list_entities(
+    repos: Repositories, user_id: UserId, world_id: WorldId
+) -> Sequence[tuple[Entity, EntityAccess]]:
+    """Every entity in the world, paired with the caller's access to each; requires world membership."""
     world = await repos.worlds.get(world_id)
     if world is None:
         raise WorldNotFoundError(world_id)
 
-    if not permissions.is_owner(world, user_id):
-        grants = await repos.permissions.get_grants(world_id, user_id)
-        if not grants:
-            raise PermissionDeniedError(user_id, world_id)
+    entities = await repos.entities.list_for_world(world_id)
 
-    return await repos.entities.list_for_world(world_id)
+    if permissions.is_owner(world, user_id):
+        return [(entity, FULL_ACCESS) for entity in entities]
+
+    grants = await repos.permissions.get_grants(world_id, user_id)
+    if not grants:
+        raise PermissionDeniedError(user_id, world_id)
+
+    parent_by_id = {entity.id: entity.parent for entity in entities}
+
+    def ancestor_ids(entity_id: EntityId) -> list[EntityId]:
+        ids: list[EntityId] = []
+        current = parent_by_id.get(entity_id)
+        while current is not None:
+            ids.append(current)
+            current = parent_by_id.get(current)
+        return ids
+
+    return [(entity, permissions.resolve_access(entity.id, ancestor_ids(entity.id), grants)) for entity in entities]
 
 
-async def get_entity(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> Entity:
+async def get_entity(
+    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> tuple[Entity, EntityAccess]:
     access = await get_entity_access(repos, user_id, world_id, entity_id)
     if not access.read:
         raise PermissionDeniedError(user_id, entity_id)
@@ -31,7 +56,7 @@ async def get_entity(repos: Repositories, user_id: UserId, world_id: WorldId, en
     entity = await repos.entities.get(world_id, entity_id)
     if entity is None:
         raise RuntimeError(f"get_entity() found no entity right after get_entity_access() confirmed one: {entity_id}")
-    return entity
+    return entity, access
 
 
 async def create_entity(
@@ -53,8 +78,13 @@ async def create_entity(
         if not access.write:
             raise PermissionDeniedError(user_id, parent_id)
 
-    entity_id = str(uuid4())
-    await repos.entities.create(world_id, entity_id, name, parent_id, user_id)
+    entity_id = secrets.token_urlsafe(9)
+    try:
+        await repos.entities.create(world_id, entity_id, name, parent_id, user_id)
+    except IdCollisionError:
+        # Vanishingly unlikely - regenerate and retry exactly once rather than fail the request.
+        entity_id = secrets.token_urlsafe(9)
+        await repos.entities.create(world_id, entity_id, name, parent_id, user_id)
     return entity_id
 
 

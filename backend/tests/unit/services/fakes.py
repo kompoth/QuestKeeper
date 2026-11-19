@@ -22,7 +22,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError, UserNotFoundError
+from app.services.access import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
 
 
 @dataclass
@@ -90,6 +90,8 @@ class FakeUserRepository:
 class FakeWorldRepository:
     worlds_by_id: dict[WorldId, World] = field(default_factory=dict)
     granted_world_ids_by_user: dict[UserId, set[WorldId]] = field(default_factory=dict)
+    collide_next_creates: int = 0
+    """Forces the next N create() calls to raise IdCollisionError, regardless of id - for retry tests."""
 
     async def get(self, world_id: WorldId) -> World | None:
         return self.worlds_by_id.get(world_id)
@@ -99,6 +101,11 @@ class FakeWorldRepository:
         return [world for world in self.worlds_by_id.values() if world.owner_id == user_id or world.id in granted]
 
     async def create(self, world: World) -> None:
+        if self.collide_next_creates > 0:
+            self.collide_next_creates -= 1
+            raise IdCollisionError(world.id)
+        if world.id in self.worlds_by_id:
+            raise IdCollisionError(world.id)
         self.worlds_by_id[world.id] = world
 
     async def update(self, world: World) -> None:
@@ -112,6 +119,8 @@ class FakeWorldRepository:
 class FakeEntityRepository:
     entities_by_id: dict[EntityId, Entity] = field(default_factory=dict)
     ancestor_ids_by_entity: dict[EntityId, Sequence[EntityId]] = field(default_factory=dict)
+    collide_next_creates: int = 0
+    """Forces the next N create() calls to raise IdCollisionError, regardless of id - for retry tests."""
 
     async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
         entity = self.entities_by_id.get(entity_id)
@@ -128,6 +137,11 @@ class FakeEntityRepository:
     async def create(
         self, world_id: WorldId, entity_id: EntityId, name: str, parent_id: EntityId | None, actor_id: UserId
     ) -> None:
+        if self.collide_next_creates > 0:
+            self.collide_next_creates -= 1
+            raise IdCollisionError(entity_id)
+        if entity_id in self.entities_by_id:
+            raise IdCollisionError(entity_id)
         now = datetime.now(UTC)
         self.entities_by_id[entity_id] = Entity(
             id=entity_id,

@@ -38,10 +38,44 @@ async def test_create_and_list_entities(async_client, db_session):
     )
     assert create_response.status_code == 200
     entity_id = create_response.json()["id"]
+    assert create_response.json()["access"] == {"read": True, "write": True, "can_delete": True}
 
     list_response = await async_client.get(f"/worlds/{world_id}/entities")
     assert list_response.status_code == 200
-    assert [entity["id"] for entity in list_response.json()] == [entity_id]
+    [listed] = list_response.json()
+    assert listed["id"] == entity_id
+    assert listed["access"] == {"read": True, "write": True, "can_delete": True}
+
+
+async def test_list_entities_reports_read_only_access_for_a_read_grantee(async_client, db_session):
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+    create_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Root"}, headers=_csrf_headers(async_client)
+    )
+    entity_id = create_response.json()["id"]
+    db_session.add(
+        UserRow(
+            id="grantee",
+            name="Grantee",
+            email="grantee@example.com",
+            hashed_password=hash_password(PASSWORD),
+            role=UserRole.MEMBER,
+        )
+    )
+    await db_session.commit()
+    await async_client.post(
+        f"/worlds/{world_id}/permissions",
+        json={"user_id": "grantee", "entity_id": entity_id, "level": "read"},
+        headers=_csrf_headers(async_client),
+    )
+
+    await async_client.post("/auth/login", json={"email": "grantee@example.com", "password": PASSWORD})
+    list_response = await async_client.get(f"/worlds/{world_id}/entities")
+
+    assert list_response.status_code == 200
+    [listed] = list_response.json()
+    assert listed["access"] == {"read": True, "write": False, "can_delete": False}
 
 
 async def test_get_entity_returns_404_when_not_found(async_client, db_session):

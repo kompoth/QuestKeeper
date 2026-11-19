@@ -13,6 +13,12 @@ export interface EntityArticleContent {
   markdown: string
 }
 
+export interface EntityAccess {
+  read: boolean
+  write: boolean
+  canDelete: boolean
+}
+
 export interface Entity {
   id: string
   worldId: string
@@ -25,4 +31,5 @@ export interface Entity {
   updatedAt: string | null
   createdBy: string | null
   updatedBy: string | null
+  access: EntityAccess
 }
