@@ -164,6 +164,10 @@ class WorldInviteRepository(Protocol):
 
     async def accept(self, invite: WorldInvite) -> None: ...
 
+    async def delete(self, world_id: WorldId, invitee_id: UserId) -> None:
+        """Deletes the invite for (world, invitee), if one exists. A no-op otherwise."""
+        ...
+
 
 class SessionRepository(Protocol):
     async def create(self, session: Session) -> None: ...

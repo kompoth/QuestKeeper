@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from app.domain.models import Entity, Map, PermissionLevel, RegistrationConfirmation, WorldInvite
+from app.domain.models import Entity, Map, RegistrationConfirmation, WorldInvite
 
 
 def test_entity_defaults_to_no_parent_and_no_children():
@@ -19,7 +19,7 @@ def test_map_defaults_to_no_pins():
 
 
 def test_world_invite_defaults_to_not_accepted():
-    invite = WorldInvite(id="i1", world_id="w1", invitee_id="u1", entity_id="e1", level=PermissionLevel.READ)
+    invite = WorldInvite(id="i1", world_id="w1", invitee_id="u1")
 
     assert invite.accepted is False
 

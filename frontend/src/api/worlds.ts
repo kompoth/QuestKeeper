@@ -22,7 +22,8 @@ export async function getWorld (id: string): Promise<World | undefined> {
   try {
     return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`))
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
+    // 403: caller has no access at all (no grant anywhere in the world) - same "unavailable" outcome as 404.
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
       return undefined
     }
     throw error

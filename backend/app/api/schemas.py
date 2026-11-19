@@ -16,7 +16,6 @@ from app.domain.models import (
     EntityId,
     Map,
     MapPin,
-    PermissionLevel,
     RuntimeSettings,
     UserId,
     UserRole,
@@ -96,8 +95,6 @@ class SetMapRequest(BaseModel):
 
 class CreateInviteRequest(BaseModel):
     invitee_email: str
-    entity_id: EntityId
-    level: PermissionLevel
 
 
 class ConfirmInviteRequest(BaseModel):
@@ -107,31 +104,25 @@ class ConfirmInviteRequest(BaseModel):
 
 
 class InviteSummary(BaseModel):
-    """The owner's view of an invite: email + grant + status, never invitee_id or the token."""
+    """The owner's view of an invite: email + status, never invitee_id or the token."""
 
     invitee_email: str
-    entity_id: EntityId
-    level: PermissionLevel
     accepted: bool
 
     @classmethod
     def from_invite(cls, invite: WorldInvite, invitee_email: str) -> InviteSummary:
-        return cls(
-            invitee_email=invitee_email, entity_id=invite.entity_id, level=invite.level, accepted=invite.accepted
-        )
+        return cls(invitee_email=invitee_email, accepted=invite.accepted)
 
 
 class PendingInviteOut(BaseModel):
-    """The invitee's own view of a pending invite: world + grant + status, no invitee_id or token."""
+    """The invitee's own view of a pending invite: world + status, no invitee_id or token."""
 
     world_id: WorldId
-    entity_id: EntityId
-    level: PermissionLevel
     accepted: bool
 
     @classmethod
     def from_invite(cls, invite: WorldInvite) -> PendingInviteOut:
-        return cls(world_id=invite.world_id, entity_id=invite.entity_id, level=invite.level, accepted=invite.accepted)
+        return cls(world_id=invite.world_id, accepted=invite.accepted)
 
 
 class RequestPasswordResetRequest(BaseModel):

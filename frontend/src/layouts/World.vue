@@ -1,5 +1,25 @@
 <template>
-  <NavBar :app-title="appTitle" back-to="/w" :items="navItems" @logout="handleLogout" />
+  <NavBar :app-title="appTitle" @logout="handleLogout">
+    <template #sidebar>
+      <SidebarTabs :tabs="sidebarTabs">
+        <template #entities>
+          <EntityNav :items="navItems" />
+        </template>
+
+        <template #trash />
+
+        <template #media />
+
+        <template v-if="isOwner" #settings>
+          <v-list density="compact" nav>
+            <v-list-item prepend-icon="mdi-tune" title="General" :to="`/w/${worldId}/settings/general`" />
+            <v-list-item prepend-icon="mdi-account-group" title="Members" :to="`/w/${worldId}/settings/members`" />
+            <v-list-item prepend-icon="mdi-alert-outline" title="Advanced" :to="`/w/${worldId}/settings/advanced`" />
+          </v-list>
+        </template>
+      </SidebarTabs>
+    </template>
+  </NavBar>
 
   <v-main scrollable>
     <router-view :key="route.fullPath" />
@@ -21,6 +41,7 @@
 </template>
 
 <script lang="ts" setup>
+  import type { SidebarTab } from '@/components/SidebarTabs.vue'
   import type { Entity } from '@/types/entity'
   import type { NavItem } from '@/types/nav-item'
   import type { World } from '@/types/world'
@@ -28,7 +49,9 @@
   import { useRoute, useRouter } from 'vue-router'
   import { createEntity, deleteEntity, getEntity, listEntities, renameEntity } from '@/api/entities'
   import { getWorld } from '@/api/worlds'
+  import EntityNav from '@/components/EntityNav.vue'
   import NavBar from '@/components/NavBar.vue'
+  import SidebarTabs from '@/components/SidebarTabs.vue'
   import { useAuth } from '@/composables/useAuth'
   import { useRenameDialog } from '@/composables/useRenameDialog'
   import { isEntityOrDescendant, refreshNavItemsKey, toNavItem } from '@/utils/nav'
@@ -48,6 +71,13 @@
   const appTitle = computed(() => world.value?.name ?? 'Questkeeper')
   const isOwner = computed(() => world.value !== undefined && world.value.ownerId === currentUser.value?.id)
 
+  const sidebarTabs = computed<SidebarTab[]>(() => [
+    { value: 'entities', icon: 'mdi-file-tree', label: 'Entities' },
+    { value: 'trash', icon: 'mdi-delete-restore', label: 'Trash', disabled: true },
+    { value: 'media', icon: 'mdi-image-multiple', label: 'Media', disabled: true },
+    ...isOwner.value ? [{ value: 'settings', icon: 'mdi-cog', label: 'Settings' }] : [],
+  ])
+
   const navItems = ref<NavItem[]>([])
 
   let navItemsRequestId = 0
@@ -65,7 +95,9 @@
       ...entities
         .filter(entity => entity.parent === null)
         .map(entity => toNavItem(worldId.value, entity, entitiesById, handlers)),
-      ...canAddRootPage ? [{ id: 'add-page', title: 'Add page', icon: 'mdi-plus', onClick: () => handleAddPage() }] : [],
+      ...canAddRootPage
+        ? [{ id: 'add-page', title: 'Add page', icon: 'mdi-note-plus-outline', onClick: () => handleAddPage() }]
+        : [],
     ]
   }
 

@@ -21,6 +21,10 @@ import LoginView from '@/views/login/LoginView.vue'
 import PasswordRecoveryView from '@/views/login/PasswordRecoveryView.vue'
 import ResetPasswordView from '@/views/login/ResetPasswordView.vue'
 import EntityView from '@/views/world/EntityView.vue'
+import AdvancedSettingsView from '@/views/world/settings/AdvancedSettingsView.vue'
+import GeneralSettingsView from '@/views/world/settings/GeneralSettingsView.vue'
+import MembersSettingsView from '@/views/world/settings/MembersSettingsView.vue'
+import WorldsListView from '@/views/worlds/WorldsListView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -58,6 +62,12 @@ const router = createRouter({
       path: '/w',
       component: Worlds,
       meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          component: WorldsListView,
+        },
+      ],
     },
     {
       path: '/w/:worldId',
@@ -78,6 +88,34 @@ const router = createRouter({
               return { path: '/not-found', query: { item: 'Entity' } }
             }
           },
+        },
+        {
+          path: 'settings',
+          beforeEnter: async to => {
+            const world = await getWorld(to.params.worldId as string)
+            const { currentUser } = useAuth()
+            if (!world || world.ownerId !== currentUser.value?.id) {
+              return { path: `/w/${to.params.worldId as string}` }
+            }
+          },
+          children: [
+            {
+              path: '',
+              redirect: to => `/w/${to.params.worldId as string}/settings/general`,
+            },
+            {
+              path: 'general',
+              component: GeneralSettingsView,
+            },
+            {
+              path: 'members',
+              component: MembersSettingsView,
+            },
+            {
+              path: 'advanced',
+              component: AdvancedSettingsView,
+            },
+          ],
         },
       ],
     },

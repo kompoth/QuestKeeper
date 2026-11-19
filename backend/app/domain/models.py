@@ -99,19 +99,16 @@ class EntityPermission(BaseModel):
 
 
 class WorldInvite(BaseModel):
-    """A pending invite to join a world, carrying the initial grant.
+    """A pending invite to join a world.
 
     `invitee_id` always points at a real `users` row - a pending placeholder (PENDING status)
     is created up front for an invitee with no account yet; its `email` is the address the
-    invite was sent to. Takes effect - adding the invitee as a world member with the given
-    EntityPermission - only once accepted.
+    invite was sent to. Entity access is granted separately, by the owner, as its own step.
     """
 
     id: str
     world_id: WorldId
     invitee_id: UserId
-    entity_id: EntityId
-    level: PermissionLevel
     accepted: bool = False
     confirmation_token: str | None = None
     token_expires_at: datetime | None = None

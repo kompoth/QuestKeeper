@@ -227,6 +227,11 @@ class FakeWorldInviteRepository:
     async def accept(self, invite: WorldInvite) -> None:
         self.invites.append(invite)
 
+    async def delete(self, world_id: WorldId, invitee_id: UserId) -> None:
+        self.invites = [
+            invite for invite in self.invites if not (invite.world_id == world_id and invite.invitee_id == invitee_id)
+        ]
+
 
 @dataclass
 class FakeSessionRepository:
@@ -303,13 +308,9 @@ class FakeRuntimeSettingsRepository:
 
 @dataclass
 class FakeMailer:
-    existing_user_invites: list[tuple[str, str]] = field(default_factory=list)  # (to_email, world_name)
     new_user_invites: list[tuple[str, str, str]] = field(default_factory=list)  # (to_email, world_name, confirm_url)
     password_resets: list[tuple[str, str]] = field(default_factory=list)  # (to_email, reset_url)
     registration_confirmations: list[tuple[str, str]] = field(default_factory=list)  # (to_email, confirm_url)
-
-    async def send_existing_user_invite(self, *, to_email: str, world_name: str) -> None:
-        self.existing_user_invites.append((to_email, world_name))
 
     async def send_new_user_invite(self, *, to_email: str, world_name: str, confirm_url: str) -> None:
         self.new_user_invites.append((to_email, world_name, confirm_url))

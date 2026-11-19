@@ -177,17 +177,9 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("world_id", sa.String(length=36), nullable=False),
         sa.Column("invitee_id", sa.String(length=36), nullable=False),
-        sa.Column("entity_id", sa.String(length=36), nullable=False),
-        sa.Column(
-            "level", sa.Enum("READ", "WRITE", name="permissionlevel", native_enum=False, length=10), nullable=False
-        ),
         sa.Column("accepted", sa.Boolean(), nullable=False),
         sa.Column("confirmation_token", sa.String(length=64), nullable=True),
         sa.Column("token_expires_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["entity_id"],
-            ["entities.id"],
-        ),
         sa.ForeignKeyConstraint(
             ["invitee_id"],
             ["users.id"],

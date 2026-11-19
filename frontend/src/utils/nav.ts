@@ -35,14 +35,14 @@ export function toNavItem (
     id: entity.id,
     title: entity.name,
     to: `/w/${worldId}/e/${entity.id}`,
-    icon: entity.map ? 'mdi-map' : 'mdi-file-document-outline',
+    icon: entity.map ? 'mdi-map' : 'mdi-note-outline',
     children: children.length > 0
       ? children.map(child => toNavItem(worldId, child, entitiesById, handlers))
       : undefined,
     // TODO: tailor which actions apply per entity (e.g. omit "Add page" once it already has one)
     actions: [
       entity.access.write && { title: 'Rename', icon: 'mdi-form-textbox', onClick: () => handlers.onRename(entity.id) },
-      entity.access.write && { title: 'Add page', icon: 'mdi-file-plus', onClick: () => handlers.onAddPage(entity.id) },
+      entity.access.write && { title: 'Add page', icon: 'mdi-note-plus-outline', onClick: () => handlers.onAddPage(entity.id) },
       entity.access.canDelete && { title: 'Delete', icon: 'mdi-delete', onClick: () => handlers.onDelete(entity.id) },
     ].filter((action): action is NavAction => action !== false),
   }

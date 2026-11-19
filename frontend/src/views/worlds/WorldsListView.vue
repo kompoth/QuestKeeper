@@ -1,0 +1,60 @@
+<template>
+  <h1 class="text-h4 mb-4">Worlds</h1>
+
+  <v-row>
+    <v-col
+      v-for="world in worlds"
+      :key="world.id"
+      cols="12"
+      md="4"
+      sm="6"
+    >
+      <v-card height="220" hover :to="`/w/${world.id}`">
+        <v-sheet class="d-flex align-center justify-center" color="surface-variant" height="140">
+          <v-icon color="on-surface-variant" icon="mdi-image" size="48" />
+        </v-sheet>
+
+        <v-card-title>{{ world.name }}</v-card-title>
+        <v-card-subtitle>{{ world.description }}</v-card-subtitle>
+      </v-card>
+    </v-col>
+
+    <v-col cols="12" md="4" sm="6">
+      <v-card
+        class="d-flex flex-column align-center justify-center text-center"
+        height="220"
+        hover
+        variant="outlined"
+        @click="handleCreateWorld"
+      >
+        <v-icon color="on-surface-variant" icon="mdi-plus" size="48" />
+        <v-card-title>New World</v-card-title>
+        <v-card-subtitle>Tell me a tale, great or small</v-card-subtitle>
+      </v-card>
+    </v-col>
+  </v-row>
+</template>
+
+<script lang="ts" setup>
+  import type { World } from '@/types/world'
+  import { onMounted, ref } from 'vue'
+  import { createWorld, listWorlds } from '@/api/worlds'
+
+  const worlds = ref<World[]>([])
+
+  let worldsRequestId = 0
+
+  async function refreshWorlds () {
+    const requestId = ++worldsRequestId
+    const result = await listWorlds()
+    if (requestId !== worldsRequestId) return // a newer refresh already started, discard this stale result
+    worlds.value = result
+  }
+
+  onMounted(refreshWorlds)
+
+  async function handleCreateWorld () {
+    await createWorld('New World', '')
+    await refreshWorlds()
+  }
+</script>

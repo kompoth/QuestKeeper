@@ -90,8 +90,6 @@ def _invite_from_row(row: WorldInviteRow) -> WorldInvite:
         id=row.id,
         world_id=row.world_id,
         invitee_id=row.invitee_id,
-        entity_id=row.entity_id,
-        level=row.level,
         accepted=row.accepted,
         confirmation_token=row.confirmation_token,
         token_expires_at=row.token_expires_at,
@@ -573,13 +571,11 @@ class SqlWorldInviteRepository:
                 "id": invite.id,
                 "world_id": invite.world_id,
                 "invitee_id": invite.invitee_id,
-                "entity_id": invite.entity_id,
-                "level": invite.level,
                 "accepted": invite.accepted,
                 "confirmation_token": invite.confirmation_token,
                 "token_expires_at": invite.token_expires_at,
             },
-            update_columns=["entity_id", "level", "accepted", "confirmation_token", "token_expires_at"],
+            update_columns=["accepted", "confirmation_token", "token_expires_at"],
         )
         result = await self._session.execute(
             select(WorldInviteRow).where(
@@ -599,8 +595,10 @@ class SqlWorldInviteRepository:
             raise InviteNotFoundError(invite.world_id, invite.invitee_id)
 
         row.accepted = True
-        self._session.add(
-            EntityPermissionRow(user_id=invite.invitee_id, entity_id=invite.entity_id, level=invite.level)
+
+    async def delete(self, world_id: WorldId, invitee_id: UserId) -> None:
+        await self._session.execute(
+            delete(WorldInviteRow).where(WorldInviteRow.world_id == world_id, WorldInviteRow.invitee_id == invitee_id)
         )
 
 

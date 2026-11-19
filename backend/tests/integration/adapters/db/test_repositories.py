@@ -906,19 +906,8 @@ class TestSqlWorldInviteRepository:
         db_session.add(make_world("w1", "u1"))
         db_session.add(make_world("w2", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        db_session.add(make_entity("e2", world_id="w2"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.READ, accepted=False
-            )
-        )
-        db_session.add(
-            WorldInviteRow(
-                id="i2", world_id="w2", invitee_id="invitee", entity_id="e2", level=PermissionLevel.WRITE, accepted=True
-            )
-        )
+        db_session.add(WorldInviteRow(id="i1", world_id="w1", invitee_id="invitee", accepted=False))
+        db_session.add(WorldInviteRow(id="i2", world_id="w2", invitee_id="invitee", accepted=True))
         await db_session.commit()
 
         invites = await SqlWorldInviteRepository(db_session).get_pending_for_user("invitee")
@@ -934,18 +923,8 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="i1", world_id="w1", invitee_id="a", entity_id="e1", level=PermissionLevel.READ, accepted=False
-            )
-        )
-        db_session.add(
-            WorldInviteRow(
-                id="i2", world_id="w1", invitee_id="b", entity_id="e1", level=PermissionLevel.WRITE, accepted=True
-            )
-        )
+        db_session.add(WorldInviteRow(id="i1", world_id="w1", invitee_id="a", accepted=False))
+        db_session.add(WorldInviteRow(id="i2", world_id="w1", invitee_id="b", accepted=True))
         await db_session.commit()
 
         invites = await SqlWorldInviteRepository(db_session).get_all_for_world("w1")
@@ -958,15 +937,11 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
         db_session.add(
             WorldInviteRow(
                 id="i1",
                 world_id="w1",
                 invitee_id="a",
-                entity_id="e1",
-                level=PermissionLevel.READ,
                 accepted=False,
                 confirmation_token="tok",
                 token_expires_at=datetime.now(UTC) + timedelta(days=1),
@@ -985,15 +960,11 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
         db_session.add(
             WorldInviteRow(
                 id="i1",
                 world_id="w1",
                 invitee_id="a",
-                entity_id="e1",
-                level=PermissionLevel.READ,
                 accepted=False,
                 confirmation_token="tok",
                 token_expires_at=datetime.now(UTC) - timedelta(seconds=1),
@@ -1011,15 +982,11 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
         db_session.add(
             WorldInviteRow(
                 id="i1",
                 world_id="w1",
                 invitee_id="invitee",
-                entity_id="e1",
-                level=PermissionLevel.READ,
                 accepted=True,
                 confirmation_token="tok",
                 token_expires_at=datetime.now(UTC) + timedelta(days=1),
@@ -1031,46 +998,24 @@ class TestSqlWorldInviteRepository:
 
         assert invite is None
 
-    async def test_accept_marks_invite_accepted_and_grants_permission(self, db_session):
+    async def test_accept_marks_invite_accepted(self, db_session):
         db_session.add(make_user("u1"))
         db_session.add(make_user("invitee"))
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="i1",
-                world_id="w1",
-                invitee_id="invitee",
-                entity_id="e1",
-                level=PermissionLevel.WRITE,
-                accepted=False,
-            )
-        )
+        db_session.add(WorldInviteRow(id="i1", world_id="w1", invitee_id="invitee", accepted=False))
         await db_session.commit()
 
-        invite = WorldInvite(
-            id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.WRITE, accepted=False
-        )
+        invite = WorldInvite(id="i1", world_id="w1", invitee_id="invitee", accepted=False)
         await SqlWorldInviteRepository(db_session).accept(invite)
         await db_session.commit()
 
         invite_row = await db_session.get(WorldInviteRow, "i1")
         assert invite_row.accepted is True
 
-        grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "invitee")
-        assert grants == {"e1": PermissionLevel.WRITE}
-
     async def test_accept_raises_when_no_matching_invite_exists(self, db_session):
-        invite = WorldInvite(
-            id="missing",
-            world_id="missing-world",
-            invitee_id="missing-invitee",
-            entity_id="e1",
-            level=PermissionLevel.READ,
-        )
+        invite = WorldInvite(id="missing", world_id="missing-world", invitee_id="missing-invitee")
 
         with pytest.raises(InviteNotFoundError):
             await SqlWorldInviteRepository(db_session).accept(invite)
@@ -1081,16 +1026,13 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        await db_session.commit()
 
-        invite = WorldInvite(id="i1", world_id="w1", invitee_id="invitee", entity_id="e1", level=PermissionLevel.READ)
+        invite = WorldInvite(id="i1", world_id="w1", invitee_id="invitee")
         await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()
 
         row = await db_session.get(WorldInviteRow, "i1")
         assert row is not None
-        assert row.level == PermissionLevel.READ
         assert row.accepted is False
 
     async def test_create_upserts_by_world_and_invitee_preserving_row_id(self, db_session):
@@ -1099,29 +1041,31 @@ class TestSqlWorldInviteRepository:
         await db_session.commit()
         db_session.add(make_world("w1", "u1"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="w1"))
-        db_session.add(make_entity("e2", world_id="w1"))
-        await db_session.commit()
-        db_session.add(
-            WorldInviteRow(
-                id="original-id",
-                world_id="w1",
-                invitee_id="invitee",
-                entity_id="e1",
-                level=PermissionLevel.READ,
-                accepted=False,
-            )
-        )
+        db_session.add(WorldInviteRow(id="original-id", world_id="w1", invitee_id="invitee", accepted=False))
         await db_session.commit()
 
-        invite = WorldInvite(
-            id="new-id", world_id="w1", invitee_id="invitee", entity_id="e2", level=PermissionLevel.WRITE
-        )
+        invite = WorldInvite(id="new-id", world_id="w1", invitee_id="invitee", accepted=True)
         await SqlWorldInviteRepository(db_session).create(invite)
         await db_session.commit()
 
         row = await db_session.get(WorldInviteRow, "original-id")
         assert row is not None
-        assert row.entity_id == "e2"
-        assert row.level == PermissionLevel.WRITE
+        assert row.accepted is True
         assert await db_session.get(WorldInviteRow, "new-id") is None
+
+    async def test_delete_removes_the_invite_for_world_and_invitee(self, db_session):
+        db_session.add(make_user("u1"))
+        db_session.add(make_user("invitee"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        db_session.add(WorldInviteRow(id="i1", world_id="w1", invitee_id="invitee", accepted=False))
+        await db_session.commit()
+
+        await SqlWorldInviteRepository(db_session).delete("w1", "invitee")
+        await db_session.commit()
+
+        assert await db_session.get(WorldInviteRow, "i1") is None
+
+    async def test_delete_is_a_noop_when_no_matching_invite_exists(self, db_session):
+        await SqlWorldInviteRepository(db_session).delete("missing-world", "missing-invitee")

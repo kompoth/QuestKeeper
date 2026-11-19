@@ -117,8 +117,6 @@ class WorldInviteRow(Base):
     id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
     world_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("worlds.id"), index=True)
     invitee_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("users.id"), index=True)
-    entity_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("entities.id"))
-    level: Mapped[PermissionLevel] = mapped_column(Enum(PermissionLevel, native_enum=False, length=10))
     accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     confirmation_token: Mapped[str | None] = mapped_column(String(64), unique=True, default=None)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)

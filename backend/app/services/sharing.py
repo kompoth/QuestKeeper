@@ -2,7 +2,6 @@
 
 import secrets
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -11,7 +10,6 @@ from app.domain.mail import Mailer
 from app.domain.models import (
     EntityId,
     EntityPermission,
-    PermissionLevel,
     User,
     UserId,
     UserRole,
@@ -25,14 +23,6 @@ from app.domain.security import hash_password
 from app.services.access import EntityNotFoundError, InviteNotFoundError, PermissionDeniedError, WorldNotFoundError
 
 INVITE_TOKEN_TTL = timedelta(days=7)
-
-
-@dataclass(frozen=True)
-class InviteGrant:
-    """The access a `create_invite` call will hand the invitee once they accept."""
-
-    entity_id: EntityId
-    level: PermissionLevel
 
 
 async def _require_owner(repos: Repositories, user_id: UserId, world_id: WorldId) -> World:
@@ -61,31 +51,18 @@ async def revoke_permission(
     await repos.permissions.revoke(grantee_id, entity_id)
 
 
-async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer/frontend_origin are distinct capability params
-    repos: Repositories,
-    mailer: Mailer,
-    user_id: UserId,
-    world_id: WorldId,
-    invitee_email: str,
-    grant: InviteGrant,
-    *,
-    frontend_origin: str,
+async def create_invite(  # noqa: PLR0913 -- repos/mailer/frontend_origin are distinct capability params, not data fields
+    repos: Repositories, mailer: Mailer, user_id: UserId, world_id: WorldId, invitee_email: str, *, frontend_origin: str
 ) -> WorldInvite:
     world = await _require_owner(repos, user_id, world_id)
-
-    entity = await repos.entities.get(world_id, grant.entity_id)
-    if entity is None:
-        raise EntityNotFoundError(grant.entity_id)
 
     invitee = await repos.users.get_by_email(invitee_email)
 
     if invitee is not None and invitee.status != UserStatus.PENDING:
-        invite = WorldInvite(
-            id=str(uuid4()), world_id=world_id, invitee_id=invitee.id, entity_id=grant.entity_id, level=grant.level
-        )
-        invite = await repos.invites.create(invite)
-        await mailer.send_existing_user_invite(to_email=invitee_email, world_name=world.name)
-        return invite
+        # No confirmation link is needed - an existing account can already see and accept the
+        # invite at /invites once logged in, so no email is sent for this path.
+        invite = WorldInvite(id=str(uuid4()), world_id=world_id, invitee_id=invitee.id)
+        return await repos.invites.create(invite)
 
     if invitee is None:
         placeholder = User(
@@ -106,8 +83,6 @@ async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer/frontend_orig
         id=str(uuid4()),
         world_id=world_id,
         invitee_id=invitee_id,
-        entity_id=grant.entity_id,
-        level=grant.level,
         confirmation_token=token,
         token_expires_at=datetime.now(UTC) + INVITE_TOKEN_TTL,
     )
@@ -120,6 +95,25 @@ async def create_invite(  # noqa: PLR0913, PLR0917 -- repos/mailer/frontend_orig
 async def list_invites_for_world(repos: Repositories, user_id: UserId, world_id: WorldId) -> Sequence[WorldInvite]:
     await _require_owner(repos, user_id, world_id)
     return await repos.invites.get_all_for_world(world_id)
+
+
+async def expel_invitee(repos: Repositories, user_id: UserId, world_id: WorldId, invitee_email: str) -> None:
+    """Deletes an invitee's invite record for this world. Owner-only.
+
+    Resolves invitee_email to a user internally - the caller never needs (or sees) invitee_id.
+    """
+    await _require_owner(repos, user_id, world_id)
+
+    invitee = await repos.users.get_by_email(invitee_email)
+    if invitee is None:
+        raise InviteNotFoundError(world_id, invitee_email)
+
+    invites = await repos.invites.get_all_for_world(world_id)
+    invite = next((candidate for candidate in invites if candidate.invitee_id == invitee.id), None)
+    if invite is None:
+        raise InviteNotFoundError(world_id, invitee.id)
+
+    await repos.invites.delete(world_id, invitee.id)
 
 
 async def accept_invite(repos: Repositories, user_id: UserId, invite: WorldInvite) -> None:

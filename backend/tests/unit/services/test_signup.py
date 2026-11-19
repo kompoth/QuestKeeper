@@ -47,8 +47,6 @@ def make_invite(invite_id: str, world_id: str, invitee_id: str, *, token: str | 
         id=invite_id,
         world_id=world_id,
         invitee_id=invitee_id,
-        entity_id="e1",
-        level="read",
         confirmation_token=token,
         token_expires_at=datetime.now(UTC) + timedelta(days=7) if token else None,
     )

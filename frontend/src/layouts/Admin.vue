@@ -1,15 +1,9 @@
 <template>
-  <v-app-bar>
-    <v-btn icon="mdi-arrow-left" to="/w" variant="text" />
-    <v-app-bar-title>Admin</v-app-bar-title>
-
-    <template #extension>
-      <v-tabs grow>
-        <v-tab to="/admin/settings">Settings</v-tab>
-        <v-tab to="/admin/users">Users</v-tab>
-      </v-tabs>
+  <NavBar app-title="Admin" @logout="handleLogout">
+    <template #sidebar>
+      <AdminNav />
     </template>
-  </v-app-bar>
+  </NavBar>
 
   <v-main scrollable>
     <v-container>
@@ -19,5 +13,16 @@
 </template>
 
 <script lang="ts" setup>
-//
+  import { useRouter } from 'vue-router'
+  import AdminNav from '@/components/AdminNav.vue'
+  import NavBar from '@/components/NavBar.vue'
+  import { useAuth } from '@/composables/useAuth'
+
+  const router = useRouter()
+  const { logout } = useAuth()
+
+  async function handleLogout () {
+    await logout()
+    router.push('/login')
+  }
 </script>

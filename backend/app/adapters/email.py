@@ -25,14 +25,6 @@ class SmtpMailer:
         self._use_tls = use_tls
         self._from_address = from_address
 
-    async def send_existing_user_invite(self, *, to_email: str, world_name: str) -> None:
-        message = self._build_message(
-            to_email,
-            subject=f"You've been invited to {world_name}",
-            body=f"You've been invited to join the world '{world_name}' on Questkeeper. Log in and accept it.",
-        )
-        await self._send(message)
-
     async def send_new_user_invite(self, *, to_email: str, world_name: str, confirm_url: str) -> None:
         message = self._build_message(
             to_email,

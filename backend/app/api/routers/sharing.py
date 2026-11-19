@@ -9,9 +9,9 @@ from app.api.dependencies import CurrentUser, MailerDep, Repos, SettingsDep, req
 from app.api.schemas import ConfirmInviteRequest, CreateInviteRequest, InviteSummary, PendingInviteOut, UserOut
 from app.domain.models import EntityId, EntityPermission, User, UserId, WorldId
 from app.services.sharing import (
-    InviteGrant,
     accept_invite_for_world,
     create_invite,
+    expel_invitee,
     grant_permission,
     list_invites_for_world,
     list_pending_invites,
@@ -46,9 +46,8 @@ async def invite(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capabil
     mailer: MailerDep,
     settings: SettingsDep,
 ) -> InviteSummary:
-    grant_ = InviteGrant(entity_id=body.entity_id, level=body.level)
     invite_ = await create_invite(
-        repos, mailer, user.id, world_id, body.invitee_email, grant_, frontend_origin=settings.frontend_origin
+        repos, mailer, user.id, world_id, body.invitee_email, frontend_origin=settings.frontend_origin
     )
     # The invite's invitee always resolves to body.invitee_email - no need to re-fetch the user.
     return InviteSummary.from_invite(invite_, body.invitee_email)
@@ -62,6 +61,11 @@ async def list_invites(world_id: WorldId, user: CurrentUser, repos: Repos) -> Se
         invitee = await repos.users.get_by_id(invite_.invitee_id)
         summaries.append(InviteSummary.from_invite(invite_, invitee.email if invitee else ""))
     return summaries
+
+
+@permissions_router.delete("/invites", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+async def expel(world_id: WorldId, email: str, user: CurrentUser, repos: Repos) -> None:
+    await expel_invitee(repos, user.id, world_id, email)
 
 
 @invites_router.get("")
