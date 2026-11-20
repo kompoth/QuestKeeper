@@ -95,12 +95,24 @@ class FakeWorldRepository:
     collide_next_creates: int = 0
     """Forces the next N create() calls to raise IdCollisionError, regardless of id - for retry tests."""
 
-    async def get(self, world_id: WorldId) -> World | None:
-        return self.worlds_by_id.get(world_id)
+    async def get(self, world_id: WorldId, *, include_deleted: bool = False) -> World | None:
+        world = self.worlds_by_id.get(world_id)
+        if world is None or (not include_deleted and world.deleted_at is not None):
+            return None
+        return world
 
     async def list_for_user(self, user_id: UserId) -> Sequence[World]:
         granted = self.granted_world_ids_by_user.get(user_id, set())
-        return [world for world in self.worlds_by_id.values() if world.owner_id == user_id or world.id in granted]
+        return [
+            world
+            for world in self.worlds_by_id.values()
+            if world.deleted_at is None and (world.owner_id == user_id or world.id in granted)
+        ]
+
+    async def list_trash(self, user_id: UserId) -> Sequence[World]:
+        return [
+            world for world in self.worlds_by_id.values() if world.owner_id == user_id and world.deleted_at is not None
+        ]
 
     async def create(self, world: World) -> None:
         if self.collide_next_creates > 0:
@@ -114,7 +126,21 @@ class FakeWorldRepository:
         self.worlds_by_id[world.id] = world
 
     async def delete(self, world_id: WorldId) -> None:
+        world = self.worlds_by_id.get(world_id)
+        if world is not None:
+            self.worlds_by_id[world_id] = world.model_copy(update={"deleted_at": datetime.now(UTC)})
+
+    async def restore(self, world_id: WorldId) -> None:
+        world = self.worlds_by_id.get(world_id)
+        if world is not None:
+            self.worlds_by_id[world_id] = world.model_copy(update={"deleted_at": None})
+
+    async def purge(self, world_id: WorldId) -> Sequence[EntityId]:
+        # Doesn't reach into a FakeEntityRepository (separate in-memory store, no cross-wiring in
+        # this test double) - only enough to exercise purge_world's own access-control guards.
+        # Full entity+media cascade behavior is covered by a live integration test instead.
         self.worlds_by_id.pop(world_id, None)
+        return []
 
 
 @dataclass
@@ -268,6 +294,11 @@ class FakeWorldInviteRepository:
 
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]:
         return [invite for invite in self.invites if invite.invitee_id == user_id and not invite.accepted]
+
+    async def get_for_user(self, world_id: WorldId, user_id: UserId) -> WorldInvite | None:
+        return next(
+            (invite for invite in self.invites if invite.world_id == world_id and invite.invitee_id == user_id), None
+        )
 
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         return [invite for invite in self.invites if invite.world_id == world_id]

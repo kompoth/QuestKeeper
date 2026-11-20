@@ -25,6 +25,7 @@ import AdvancedSettingsView from '@/views/world/settings/AdvancedSettingsView.vu
 import GeneralSettingsView from '@/views/world/settings/GeneralSettingsView.vue'
 import MembersSettingsView from '@/views/world/settings/MembersSettingsView.vue'
 import WorldsListView from '@/views/worlds/WorldsListView.vue'
+import WorldsTrashView from '@/views/worlds/WorldsTrashView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -66,6 +67,10 @@ const router = createRouter({
         {
           path: '',
           component: WorldsListView,
+        },
+        {
+          path: 'trash',
+          component: WorldsTrashView,
         },
       ],
     },

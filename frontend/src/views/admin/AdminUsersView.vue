@@ -47,7 +47,7 @@
     </template>
 
     <template #item.joinedAt="{ item }">
-      {{ formatJoinedAt(item.joinedAt) }}
+      {{ formatDate(item.joinedAt) }}
     </template>
 
     <template #item.actions="{ item }">
@@ -104,6 +104,7 @@
   import { ApiError } from '@/api/client'
   import MemberItem from '@/components/MemberItem.vue'
   import { useAuth } from '@/composables/useAuth'
+  import { formatDate } from '@/utils/date'
 
   const { currentUser } = useAuth()
 
@@ -136,12 +137,6 @@
   const snackbar = ref(false)
   const snackbarText = ref('')
   const snackbarColor = ref('success')
-
-  function formatJoinedAt (joinedAt: string) {
-    // 'en-GB' forces day-month-year (European) order - plain toLocaleDateString() can resolve to
-    // American month-day-year depending on the browser's default locale.
-    return new Date(joinedAt).toLocaleDateString('en-GB')
-  }
 
   function statusColor (status: UserStatus) {
     if (status === 'banned') return 'error'

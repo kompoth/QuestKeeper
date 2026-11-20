@@ -68,6 +68,10 @@ class EntityNotInTrashError(Exception):
     """Raised when restore/restore-branch/purge targets an entity that exists but isn't soft-deleted."""
 
 
+class WorldNotInTrashError(Exception):
+    """Raised when restore/purge targets a world that exists but isn't soft-deleted."""
+
+
 class UnsupportedMediaTypeError(Exception):
     """Raised when a media upload's declared content-type isn't on the image allow-list."""
 

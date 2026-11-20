@@ -82,6 +82,11 @@ async def grant_permission(  # noqa: PLR0913, PLR0917 -- repos/world_id/entity_i
     if grantee is None:
         raise UserNotFoundError(grantee_email)
 
+    # Entity access is only ever granted to someone already invited to the world - an invite is
+    # what unlocks the world itself; this just narrows what they can see or edit inside it.
+    if await repos.invites.get_for_user(world_id, grantee.id) is None:
+        raise InviteNotFoundError(world_id, grantee.id)
+
     await repos.permissions.grant(grantee.id, entity_id, level)
 
 

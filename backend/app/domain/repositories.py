@@ -75,10 +75,16 @@ class UserRepository(Protocol):
 
 
 class WorldRepository(Protocol):
-    async def get(self, world_id: WorldId) -> World | None: ...
+    async def get(self, world_id: WorldId, *, include_deleted: bool = False) -> World | None:
+        """The world, or None if it doesn't exist. Excludes soft-deleted worlds unless `include_deleted`."""
+        ...
 
     async def list_for_user(self, user_id: UserId) -> Sequence[World]:
-        """Worlds the user owns, plus worlds where they hold any permission grant."""
+        """Worlds the user owns, or was invited to (accepted or not)."""
+        ...
+
+    async def list_trash(self, user_id: UserId) -> Sequence[World]:
+        """Soft-deleted worlds owned by the user - trash is owner-only, unlike entity trash."""
         ...
 
     async def create(self, world: World) -> None:
@@ -89,6 +95,17 @@ class WorldRepository(Protocol):
 
     async def delete(self, world_id: WorldId) -> None:
         """Soft-deletes the world; its entities are left untouched but become unreachable."""
+        ...
+
+    async def restore(self, world_id: WorldId) -> None: ...
+
+    async def purge(self, world_id: WorldId) -> Sequence[EntityId]:
+        """Permanently deletes the world and every one of its entities (tombstoned or not), along
+        with their article/map facets, map pins, and permission grants.
+
+        Returns every purged entity id, so the caller can also clean up any external resources
+        (e.g. media) keyed by those ids - nothing else ever will, once the rows are gone.
+        """
         ...
 
 
@@ -179,6 +196,14 @@ class EntityPermissionRepository(Protocol):
 
 class WorldInviteRepository(Protocol):
     async def get_pending_for_user(self, user_id: UserId) -> Sequence[WorldInvite]: ...
+
+    async def get_for_user(self, world_id: WorldId, user_id: UserId) -> WorldInvite | None:
+        """The user's invite to this world, pending or accepted, or None.
+
+        Being invited grants entry to the world itself regardless of acceptance - entity-level
+        access stays separate and must still be granted individually.
+        """
+        ...
 
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         """Every invite for the world, pending or accepted - for the owner's settings view."""

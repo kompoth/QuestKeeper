@@ -2,7 +2,8 @@
   <NavBar app-subtitle="Pre-alpha" app-title="QuestKeeper" @logout="handleLogout">
     <template #sidebar>
       <v-list density="compact" nav>
-        <v-list-item prepend-icon="mdi-earth" title="Worlds" to="/w" />
+        <v-list-item exact prepend-icon="mdi-earth" title="Worlds" to="/w" />
+        <v-list-item prepend-icon="mdi-delete-restore" title="Trash" to="/w/trash" />
         <v-list-item disabled prepend-icon="mdi-cog" title="Settings" />
       </v-list>
     </template>

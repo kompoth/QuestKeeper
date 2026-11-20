@@ -91,7 +91,9 @@ export function toTrashNavItem (
           {
             title: 'Restore branch', icon: 'mdi-backup-restore', onClick: () => handlers.onRestoreBranch(entity.id),
           },
-          { title: 'Delete', icon: 'mdi-delete-forever', color: 'red', onClick: () => handlers.onPurge(entity.id) },
+          {
+            title: 'Delete forever', icon: 'mdi-delete-forever', color: 'red', onClick: () => handlers.onPurge(entity.id),
+          },
         ]
       : undefined,
   }

@@ -105,6 +105,7 @@ def _world_from_row(row: WorldRow) -> World:
         description=row.description,
         pic=row.pic,
         created_at=row.created_at,
+        deleted_at=row.deleted_at,
     )
 
 
@@ -221,11 +222,18 @@ class SqlWorldRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(self, world_id: WorldId) -> World | None:
+    async def get(self, world_id: WorldId, *, include_deleted: bool = False) -> World | None:
         row = await self._session.get(WorldRow, world_id)
-        if row is None or row.deleted_at is not None:
+        if row is None or (not include_deleted and row.deleted_at is not None):
             return None
         return _world_from_row(row)
+
+    async def list_trash(self, user_id: UserId) -> Sequence[World]:
+        result = await self._session.execute(
+            select(WorldRow).where(WorldRow.owner_id == user_id, WorldRow.deleted_at.is_not(None))
+        )
+        worlds = [_world_from_row(row) for row in result.scalars()]
+        return sorted(worlds, key=lambda world: world.created_at or datetime.min.replace(tzinfo=UTC))
 
     async def list_for_user(self, user_id: UserId) -> Sequence[World]:
         owned = await self._session.execute(
@@ -233,14 +241,13 @@ class SqlWorldRepository:
         )
         worlds_by_id = {row.id: row for row in owned.scalars()}
 
-        granted = await self._session.execute(
+        # An invite - accepted or not - unlocks the world itself, independent of entity grants.
+        invited = await self._session.execute(
             select(WorldRow)
-            .join(EntityRow, EntityRow.world_id == WorldRow.id)
-            .join(EntityPermissionRow, EntityPermissionRow.entity_id == EntityRow.id)
-            .where(EntityPermissionRow.user_id == user_id, WorldRow.deleted_at.is_(None))
-            .distinct()
+            .join(WorldInviteRow, WorldInviteRow.world_id == WorldRow.id)
+            .where(WorldInviteRow.invitee_id == user_id, WorldRow.deleted_at.is_(None))
         )
-        for row in granted.scalars():
+        for row in invited.scalars():
             worlds_by_id.setdefault(row.id, row)
 
         worlds = [_world_from_row(row) for row in worlds_by_id.values()]
@@ -274,6 +281,47 @@ class SqlWorldRepository:
         await self._session.execute(
             update(WorldRow).where(WorldRow.id == world_id).values(deleted_at=datetime.now(UTC))
         )
+
+    async def restore(self, world_id: WorldId) -> None:
+        await self._session.execute(update(WorldRow).where(WorldRow.id == world_id).values(deleted_at=None))
+
+    async def purge(self, world_id: WorldId) -> Sequence[EntityId]:
+        """Permanently deletes every entity in the world (tombstoned or not) and the world itself.
+
+        Entity ids are ordered children-before-parents (BFS from every root, then reversed) - same
+        reasoning as `SqlEntityRepository.purge()`: `entities.parent_id` self-references `entities.id`
+        with no ON DELETE cascade.
+        """
+        result = await self._session.execute(
+            select(EntityRow.id, EntityRow.parent_id).where(EntityRow.world_id == world_id)
+        )
+        parent_by_id = {row.id: row.parent_id for row in result}
+        entity_ids = list(parent_by_id)
+
+        # Top-down order: an entity joins once its parent has (roots, whose parent_id is None,
+        # join immediately). Reversed below gives the children-before-parents deletion order.
+        ordered_ids: list[EntityId] = []
+        placed = {None}
+        remaining = set(entity_ids)
+        while remaining:
+            frontier = [entity_id for entity_id in remaining if parent_by_id[entity_id] in placed]
+            ordered_ids.extend(frontier)
+            placed.update(frontier)
+            remaining.difference_update(frontier)
+
+        if entity_ids:
+            await self._session.execute(delete(MapPinRow).where(MapPinRow.pinned_entity_id.in_(entity_ids)))
+            await self._session.execute(delete(MapPinRow).where(MapPinRow.map_entity_id.in_(entity_ids)))
+            await self._session.execute(delete(MapRow).where(MapRow.entity_id.in_(entity_ids)))
+            await self._session.execute(delete(ArticleRow).where(ArticleRow.entity_id.in_(entity_ids)))
+            await self._session.execute(
+                delete(EntityPermissionRow).where(EntityPermissionRow.entity_id.in_(entity_ids))
+            )
+            for child_first_id in reversed(ordered_ids):
+                await self._session.execute(delete(EntityRow).where(EntityRow.id == child_first_id))
+
+        await self._session.execute(delete(WorldRow).where(WorldRow.id == world_id))
+        return entity_ids
 
 
 class SqlEntityRepository:
@@ -654,6 +702,13 @@ class SqlWorldInviteRepository:
             select(WorldInviteRow).where(WorldInviteRow.invitee_id == user_id, ~WorldInviteRow.accepted)
         )
         return [_invite_from_row(row) for row in result.scalars()]
+
+    async def get_for_user(self, world_id: WorldId, user_id: UserId) -> WorldInvite | None:
+        result = await self._session.execute(
+            select(WorldInviteRow).where(WorldInviteRow.world_id == world_id, WorldInviteRow.invitee_id == user_id)
+        )
+        row = result.scalar_one_or_none()
+        return _invite_from_row(row) if row is not None else None
 
     async def get_all_for_world(self, world_id: WorldId) -> Sequence[WorldInvite]:
         result = await self._session.execute(

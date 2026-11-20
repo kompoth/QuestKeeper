@@ -9,10 +9,8 @@
       md="4"
       sm="6"
     >
-      <v-card height="220" hover :to="`/w/${world.id}`">
-        <v-sheet class="d-flex align-center justify-center" color="surface-variant" height="140">
-          <v-icon color="on-surface-variant" icon="mdi-image" size="48" />
-
+      <WorldCard :to="`/w/${world.id}`" :world="world">
+        <template #overlay>
           <v-chip
             class="position-absolute"
             :color="isOwner(world) ? 'primary' : 'secondary'"
@@ -34,11 +32,8 @@
           >
             New
           </v-chip>
-        </v-sheet>
-
-        <v-card-title>{{ world.name }}</v-card-title>
-        <v-card-subtitle>{{ world.description }}</v-card-subtitle>
-      </v-card>
+        </template>
+      </WorldCard>
     </v-col>
 
     <v-col cols="12" md="4" sm="6">
@@ -62,6 +57,7 @@
   import { computed, onMounted, ref } from 'vue'
   import { listMyPendingInvites } from '@/api/invites'
   import { createWorld, listWorlds } from '@/api/worlds'
+  import WorldCard from '@/components/WorldCard.vue'
   import { useAuth } from '@/composables/useAuth'
 
   const { currentUser } = useAuth()

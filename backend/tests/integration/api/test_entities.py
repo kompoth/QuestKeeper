@@ -65,6 +65,11 @@ async def test_list_entities_reports_read_only_access_for_a_read_grantee(async_c
     )
     await db_session.commit()
     await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "grantee@example.com"},
+        headers=_csrf_headers(async_client),
+    )
+    await async_client.post(
         f"/worlds/{world_id}/permissions",
         json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "read"},
         headers=_csrf_headers(async_client),

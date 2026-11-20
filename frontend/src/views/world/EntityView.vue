@@ -40,6 +40,7 @@
 
         <EntityArticle
           v-else
+          class="pa-4"
           :editable="articleEditable"
           :entity-id="entity.id"
           :model-value="entity.article?.markdown ?? ''"

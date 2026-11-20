@@ -1,12 +1,24 @@
+from datetime import UTC, datetime
+
 import pytest
 
-from app.domain.models import PermissionLevel, World
+from app.domain.models import PermissionLevel, World, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError
-from app.services.worlds import create_world, get_world, list_worlds, update_world
+from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
+from app.services.worlds import (
+    create_world,
+    delete_world,
+    get_world,
+    list_world_trash,
+    list_worlds,
+    purge_world,
+    restore_world,
+    update_world,
+)
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
+    FakeMediaStorage,
     FakePasswordResetRepository,
     FakeRegistrationConfirmationRepository,
     FakeRuntimeSettingsRepository,
@@ -77,6 +89,26 @@ async def test_get_world_succeeds_for_a_user_with_any_grant_in_the_world():
         entities=FakeEntityRepository(),
         permissions=FakeEntityPermissionRepository(grants_by_user={OTHER_USER_ID: {"e1": PermissionLevel.READ}}),
         invites=FakeWorldInviteRepository(),
+        sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
+    )
+
+    found = await get_world(repos, OTHER_USER_ID, WORLD_ID)
+
+    assert found == world
+
+
+async def test_get_world_succeeds_for_a_user_with_an_unaccepted_invite_and_no_grants():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=OTHER_USER_ID, accepted=False)
+    repos = Repositories(
+        users=FakeUserRepository(),
+        worlds=FakeWorldRepository(worlds_by_id={WORLD_ID: world}),
+        entities=FakeEntityRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(invites=[invite]),
         sessions=FakeSessionRepository(),
         password_resets=FakePasswordResetRepository(),
         registration_confirmations=FakeRegistrationConfirmationRepository(),
@@ -190,3 +222,96 @@ async def test_update_world_replaces_mutable_fields_for_the_owner():
     assert updated.description == "New"
     assert updated.pic == "pic.png"
     assert updated.owner_id == OWNER_ID
+
+
+async def test_delete_world_soft_deletes_it():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    await delete_world(repos, OWNER_ID, WORLD_ID)
+
+    assert await repos.worlds.get(WORLD_ID) is None
+    trashed = await repos.worlds.get(WORLD_ID, include_deleted=True)
+    assert trashed is not None
+    assert trashed.deleted_at is not None
+
+
+async def test_delete_world_raises_when_caller_is_not_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(PermissionDeniedError):
+        await delete_world(repos, OTHER_USER_ID, WORLD_ID)
+
+
+async def test_list_world_trash_returns_only_deleted_worlds_owned_by_caller():
+    deleted_own = World(id="w-deleted", owner_id=OWNER_ID, name="Deleted", deleted_at=datetime.now(UTC))
+    live_own = World(id="w-live", owner_id=OWNER_ID, name="Live")
+    deleted_other = World(id="w-other", owner_id=OTHER_USER_ID, name="Other", deleted_at=datetime.now(UTC))
+    repos = Repositories(
+        users=FakeUserRepository(),
+        worlds=FakeWorldRepository(worlds_by_id={world.id: world for world in (deleted_own, live_own, deleted_other)}),
+        entities=FakeEntityRepository(),
+        permissions=FakeEntityPermissionRepository(),
+        invites=FakeWorldInviteRepository(),
+        sessions=FakeSessionRepository(),
+        password_resets=FakePasswordResetRepository(),
+        registration_confirmations=FakeRegistrationConfirmationRepository(),
+        runtime_settings=FakeRuntimeSettingsRepository(),
+    )
+
+    result = await list_world_trash(repos, OWNER_ID)
+
+    assert {world.id for world in result} == {"w-deleted"}
+
+
+async def test_restore_world_succeeds_for_owner_of_a_trashed_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", deleted_at=datetime.now(UTC))
+    repos = make_repos(world=world)
+
+    await restore_world(repos, OWNER_ID, WORLD_ID)
+
+    restored = await repos.worlds.get(WORLD_ID)
+    assert restored is not None
+    assert restored.deleted_at is None
+
+
+async def test_restore_world_raises_when_caller_is_not_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", deleted_at=datetime.now(UTC))
+    repos = make_repos(world=world)
+
+    with pytest.raises(PermissionDeniedError):
+        await restore_world(repos, OTHER_USER_ID, WORLD_ID)
+
+
+async def test_restore_world_raises_when_not_in_trash():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(WorldNotInTrashError):
+        await restore_world(repos, OWNER_ID, WORLD_ID)
+
+
+async def test_purge_world_removes_a_trashed_world_owned_by_the_caller():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", deleted_at=datetime.now(UTC))
+    repos = make_repos(world=world)
+
+    await purge_world(repos, FakeMediaStorage(), OWNER_ID, WORLD_ID)
+
+    assert await repos.worlds.get(WORLD_ID, include_deleted=True) is None
+
+
+async def test_purge_world_raises_when_caller_is_not_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", deleted_at=datetime.now(UTC))
+    repos = make_repos(world=world)
+
+    with pytest.raises(PermissionDeniedError):
+        await purge_world(repos, FakeMediaStorage(), OTHER_USER_ID, WORLD_ID)
+
+
+async def test_purge_world_raises_when_not_in_trash():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(WorldNotInTrashError):
+        await purge_world(repos, FakeMediaStorage(), OWNER_ID, WORLD_ID)

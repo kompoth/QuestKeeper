@@ -57,6 +57,11 @@ async def test_grant_and_revoke_permission(async_client, db_session):
         UserRow(id="grantee", name="Grantee", email="grantee@example.com", hashed_password="x", role=UserRole.MEMBER)
     )
     await db_session.commit()
+    await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "grantee@example.com"},
+        headers=_csrf_headers(async_client),
+    )
 
     grant_response = await async_client.post(
         f"/worlds/{world_id}/permissions",
@@ -68,7 +73,7 @@ async def test_grant_and_revoke_permission(async_client, db_session):
     permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
     assert permissions_response.status_code == 200
     assert permissions_response.json() == {
-        "direct": [{"user_id": "grantee", "email": "grantee@example.com", "name": "Grantee", "level": "write"}],
+        "direct": [{"user_id": "grantee", "email": "grantee@example.com", "name": None, "level": "write"}],
         "inherited": [],
     }
 
@@ -145,9 +150,9 @@ async def test_get_permissions_reports_name_once_the_grantees_invite_is_accepted
     assert grant["name"] == "Grantee"
 
 
-async def test_get_permissions_reports_name_for_a_grantee_with_no_invite_at_all(async_client, db_session):
-    """Granting access directly, with no invite ever sent, reveals nothing new - the owner already
-    knows the email resolves to a real account the moment the grant itself succeeds."""
+async def test_grant_permission_raises_404_for_a_grantee_with_no_invite_at_all(async_client, db_session):
+    """Entity access can only ever be granted to someone already invited to the world - an invite
+    is what unlocks the world itself; granting narrows what they can see or edit inside it."""
     await _login(async_client, db_session, user_id="owner")
     world_id = await _create_world(async_client)
     entity_id = await _create_entity(async_client, world_id)
@@ -156,15 +161,13 @@ async def test_get_permissions_reports_name_for_a_grantee_with_no_invite_at_all(
     )
     await db_session.commit()
 
-    await async_client.post(
+    grant_response = await async_client.post(
         f"/worlds/{world_id}/permissions",
         json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "write"},
         headers=_csrf_headers(async_client),
     )
 
-    permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
-    [grant] = permissions_response.json()["direct"]
-    assert grant["name"] == "Grantee"
+    assert grant_response.status_code == 404
 
 
 async def test_create_invite_and_list_and_accept(async_client, db_session):

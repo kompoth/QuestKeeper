@@ -1,5 +1,5 @@
 <template>
-  <NavBar app-title="Admin" @logout="handleLogout">
+  <NavBar app-title="Admin" show-back-button @logout="handleLogout">
     <template #sidebar>
       <AdminNav />
     </template>

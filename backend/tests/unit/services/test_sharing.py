@@ -70,12 +70,25 @@ async def test_grant_permission_succeeds_for_world_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
     grantee = make_invitee()
-    repos = make_repos(world=world, entity=entity, users={GRANTEE_ID: grantee})
+    invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID)
+    repos = make_repos(
+        world=world, entity=entity, users={GRANTEE_ID: grantee}, invites=FakeWorldInviteRepository(invites=[invite])
+    )
 
     await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, grantee.email, PermissionLevel.WRITE)
 
     grants = await repos.permissions.get_grants(WORLD_ID, GRANTEE_ID)
     assert grants == {ENTITY_ID: PermissionLevel.WRITE}
+
+
+async def test_grant_permission_raises_when_grantee_has_no_invite_to_the_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    grantee = make_invitee()
+    repos = make_repos(world=world, entity=entity, users={GRANTEE_ID: grantee})
+
+    with pytest.raises(InviteNotFoundError):
+        await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, grantee.email, PermissionLevel.WRITE)
 
 
 async def test_grant_permission_raises_when_world_not_found():

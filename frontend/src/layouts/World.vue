@@ -1,5 +1,5 @@
 <template>
-  <NavBar :app-title="appTitle" @logout="handleLogout">
+  <NavBar :app-title="appTitle" show-back-button @logout="handleLogout">
     <template #sidebar>
       <SidebarTabs :tabs="sidebarTabs">
         <template #entities>
@@ -139,13 +139,13 @@
   </v-dialog>
 
   <v-dialog v-model="purgeConfirmOpen" width="400">
-    <v-card title="Delete permanently">
+    <v-card title="Delete forever">
       <v-card-text>This cannot be undone.</v-card-text>
 
       <v-card-actions>
         <v-spacer />
         <v-btn @click="purgeConfirmOpen = false">Cancel</v-btn>
-        <v-btn color="red" variant="flat" @click="confirmPurge">Delete</v-btn>
+        <v-btn color="red" variant="flat" @click="confirmPurge">Delete forever</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

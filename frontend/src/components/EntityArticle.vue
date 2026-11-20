@@ -128,7 +128,12 @@
   --crepe-color-inline-area: rgb(var(--v-theme-surface-light));
 }
 
-/* Crepe's base theme hardcodes 60px/120px regardless of viewport - way too wide a gutter on a phone. */
+/* Crepe's base theme hardcodes 60px/120px regardless of viewport - way too tall a gutter on desktop,
+   way too wide a gutter on a phone. */
+.milkdown .ProseMirror {
+  padding-top: 24px;
+}
+
 .article-mobile .milkdown .ProseMirror {
   padding: 24px 16px;
 }

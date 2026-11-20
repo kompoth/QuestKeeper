@@ -4,5 +4,6 @@ export interface World {
   name: string
   description: string | null
   pic: string | null
+  deletedAt: string | null
   ownerName?: string
 }

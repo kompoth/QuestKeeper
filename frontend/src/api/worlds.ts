@@ -7,6 +7,7 @@ interface WorldDto {
   name: string
   description: string | null
   pic: string | null
+  deleted_at: string | null
   owner_name?: string
 }
 
@@ -17,12 +18,18 @@ function toWorld (dto: WorldDto): World {
     name: dto.name,
     description: dto.description,
     pic: dto.pic,
+    deletedAt: dto.deleted_at,
     ownerName: dto.owner_name,
   }
 }
 
 export async function listWorlds (): Promise<World[]> {
   const dtos = await apiFetch<WorldDto[]>('/worlds')
+  return dtos.map(dto => toWorld(dto))
+}
+
+export async function listWorldTrash (): Promise<World[]> {
+  const dtos = await apiFetch<WorldDto[]>('/worlds/trash')
   return dtos.map(dto => toWorld(dto))
 }
 
@@ -48,4 +55,12 @@ export async function updateWorld (id: string, name: string, description: string
 
 export async function deleteWorld (id: string): Promise<void> {
   await apiFetch<void>(`/worlds/${id}`, { method: 'DELETE' })
+}
+
+export async function restoreWorld (id: string): Promise<World> {
+  return toWorld(await apiFetch<WorldDto>(`/worlds/${id}/restore`, { method: 'POST' }))
+}
+
+export async function purgeWorld (id: string): Promise<void> {
+  await apiFetch<void>(`/worlds/${id}/purge`, { method: 'DELETE' })
 }

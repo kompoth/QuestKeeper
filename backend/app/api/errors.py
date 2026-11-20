@@ -23,6 +23,7 @@ from app.services.access import (
     UnsupportedMediaTypeError,
     UserNotFoundError,
     WorldNotFoundError,
+    WorldNotInTrashError,
 )
 from app.services.auth import InvalidCredentialsError, InvalidSessionError, UserBannedError, UserPendingError
 
@@ -83,7 +84,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         app.add_exception_handler(exc_type, _forbidden)
     for exc_type in (InvalidCredentialsError, InvalidSessionError):
         app.add_exception_handler(exc_type, _unauthorized)
-    for exc_type in (EmailAlreadyRegisteredError, InvalidStatusTransitionError, EntityNotInTrashError):
+    for exc_type in (
+        EmailAlreadyRegisteredError,
+        InvalidStatusTransitionError,
+        EntityNotInTrashError,
+        WorldNotInTrashError,
+    ):
         app.add_exception_handler(exc_type, _conflict)
     app.add_exception_handler(MailDeliveryError, _service_unavailable)
     app.add_exception_handler(MediaTooLargeError, _payload_too_large)

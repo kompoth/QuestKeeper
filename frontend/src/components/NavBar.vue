@@ -8,7 +8,7 @@
     </div>
 
     <v-btn
-      v-if="route.path !== '/w'"
+      v-if="showBackButton"
       class="flex-shrink-0"
       prepend-icon="mdi-chevron-left"
       to="/w"
@@ -45,7 +45,7 @@
         <v-spacer />
 
         <v-btn
-          v-if="route.path !== '/w'"
+          v-if="showBackButton"
           class="flex-shrink-0"
           prepend-icon="mdi-chevron-left"
           to="/w"
@@ -90,7 +90,6 @@
 
 <script lang="ts" setup>
   import { ref, watch } from 'vue'
-  import { useRoute } from 'vue-router'
   import { useDisplay } from 'vuetify'
   import { useAuth } from '@/composables/useAuth'
   import AccountMenu from './AccountMenu.vue'
@@ -101,6 +100,7 @@
   defineProps<{
     appTitle: string
     appSubtitle?: string
+    showBackButton?: boolean
   }>()
 
   const emit = defineEmits<{
@@ -108,8 +108,6 @@
   }>()
 
   const { currentUser } = useAuth()
-
-  const route = useRoute()
 
   const { mobile } = useDisplay()
 

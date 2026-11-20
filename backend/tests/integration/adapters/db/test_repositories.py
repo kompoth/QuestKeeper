@@ -232,39 +232,48 @@ class TestSqlWorldRepository:
         assert row.description == "New description"
         assert row.pic == "new.png"
 
-    async def test_list_for_user_includes_owned_and_granted_worlds(self, db_session):
+    async def test_list_for_user_includes_owned_and_invited_worlds(self, db_session):
         db_session.add(make_user("u1"))
         db_session.add(make_user("u2"))
         await db_session.commit()
         db_session.add(make_world("owned", "u1"))
-        db_session.add(make_world("granted", "u2"))
+        db_session.add(make_world("invited", "u2"))
         db_session.add(make_world("other", "u2"))
         await db_session.commit()
-        db_session.add(make_entity("e1", world_id="granted"))
-        await db_session.commit()
-        db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.READ))
+        # Unaccepted is enough - an invite unlocks the world itself regardless of acceptance.
+        db_session.add(WorldInviteRow(id="i1", world_id="invited", invitee_id="u1"))
         await db_session.commit()
 
         worlds = await SqlWorldRepository(db_session).list_for_user("u1")
 
-        assert {world.id for world in worlds} == {"owned", "granted"}
+        assert {world.id for world in worlds} == {"owned", "invited"}
 
-    async def test_list_for_user_returns_each_world_once_with_multiple_grants(self, db_session):
+    async def test_list_for_user_excludes_a_world_with_only_an_entity_grant_and_no_invite(self, db_session):
         db_session.add(make_user("u1"))
         db_session.add(make_user("u2"))
         await db_session.commit()
         db_session.add(make_world("granted", "u2"))
         await db_session.commit()
         db_session.add(make_entity("e1", world_id="granted"))
-        db_session.add(make_entity("e2", world_id="granted"))
         await db_session.commit()
         db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.READ))
-        db_session.add(EntityPermissionRow(user_id="u1", entity_id="e2", level=PermissionLevel.WRITE))
         await db_session.commit()
 
         worlds = await SqlWorldRepository(db_session).list_for_user("u1")
 
-        assert [world.id for world in worlds] == ["granted"]
+        assert worlds == []
+
+    async def test_list_for_user_returns_each_world_once_when_owned_and_invited(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        db_session.add(WorldInviteRow(id="i1", world_id="w1", invitee_id="u1"))
+        await db_session.commit()
+
+        worlds = await SqlWorldRepository(db_session).list_for_user("u1")
+
+        assert [world.id for world in worlds] == ["w1"]
 
 
 class TestSqlEntityRepository:
