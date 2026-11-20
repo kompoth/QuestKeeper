@@ -136,6 +136,24 @@ async def test_upload_and_read_round_trip_against_the_real_store(async_client, d
     assert final_response.content == b"hello-world!"
 
 
+async def test_read_response_is_cacheable_only_as_long_as_its_signed_url_stays_valid(async_client, db_session):
+    """Bounding Cache-Control to the signed URL's own TTL means a cached redirect can never outlive
+    the URL it points to; `private` keeps it out of any shared/CDN cache, since access is per-user."""
+    await _login(async_client, db_session)
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    mint = (
+        await async_client.post(
+            f"/worlds/{world_id}/entities/{entity_id}/media",
+            json={"content_type": "image/png", "size": 12},
+            headers=_csrf_headers(async_client),
+        )
+    ).json()
+
+    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+
+    assert response.headers["cache-control"] == "private, max-age=60"
+
+
 async def test_real_store_rejects_upload_exceeding_the_signed_size_condition(async_client, db_session):
     """The declared-size check at mint time is just a fast, friendly error - this is the guarantee
     that actually holds: the signed POST condition itself, enforced by the store, independent of
@@ -188,6 +206,96 @@ async def test_read_requires_read_access(async_client, db_session):
     await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
 
     response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/some-file-id")
+
+    assert response.status_code == 403
+
+
+async def test_list_media_returns_uploaded_files(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    mint = (
+        await async_client.post(
+            f"/worlds/{world_id}/entities/{entity_id}/media",
+            json={"content_type": "image/png", "size": 12},
+            headers=_csrf_headers(async_client),
+        )
+    ).json()
+    await _upload_real_bytes(mint, b"hello-world!")
+
+    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"file_id": mint["file_id"], "path": f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"}
+    ]
+
+
+async def test_list_media_requires_read_access(async_client, db_session):
+    await _login(async_client, db_session, user_id="owner")
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    db_session.add(
+        UserRow(
+            id="outsider",
+            name="Outsider",
+            email="outsider@example.com",
+            hashed_password=hash_password(PASSWORD),
+            role=UserRole.MEMBER,
+        )
+    )
+    await db_session.commit()
+    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
+
+    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
+
+    assert response.status_code == 403
+
+
+async def test_delete_media_permanently_removes_the_file_from_the_real_store(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    mint = (
+        await async_client.post(
+            f"/worlds/{world_id}/entities/{entity_id}/media",
+            json={"content_type": "image/png", "size": 12},
+            headers=_csrf_headers(async_client),
+        )
+    ).json()
+    await _upload_real_bytes(mint, b"hello-world!")
+    signed_get_url = (
+        await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+    ).headers["location"]
+
+    delete_response = await async_client.delete(
+        f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}", headers=_csrf_headers(async_client)
+    )
+    assert delete_response.status_code == 204
+
+    list_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
+    assert list_response.json() == []
+
+    async with httpx.AsyncClient() as store_client:
+        final_response = await store_client.get(signed_get_url)
+    assert final_response.status_code == 404
+
+
+async def test_delete_media_requires_write_access(async_client, db_session):
+    await _login(async_client, db_session, user_id="owner")
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    db_session.add(
+        UserRow(
+            id="outsider",
+            name="Outsider",
+            email="outsider@example.com",
+            hashed_password=hash_password(PASSWORD),
+            role=UserRole.MEMBER,
+        )
+    )
+    await db_session.commit()
+    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
+
+    response = await async_client.delete(
+        f"/worlds/{world_id}/entities/{entity_id}/media/some-file-id", headers=_csrf_headers(async_client)
+    )
 
     assert response.status_code == 403
 

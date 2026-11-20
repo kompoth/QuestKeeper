@@ -1,5 +1,7 @@
 """S3-compatible (MinIO/AWS S3) MediaStorage adapter."""
 
+from collections.abc import Sequence
+
 import aioboto3
 import boto3
 from botocore.config import Config
@@ -46,3 +48,8 @@ class S3MediaStorage:
         async with self._session.resource("s3", **self._client_kwargs) as s3:
             bucket = await s3.Bucket(self._bucket)
             await bucket.objects.filter(Prefix=prefix).delete()
+
+    async def list_objects(self, *, prefix: str) -> Sequence[str]:
+        async with self._session.resource("s3", **self._client_kwargs) as s3:
+            bucket = await s3.Bucket(self._bucket)
+            return [obj.key async for obj in bucket.objects.filter(Prefix=prefix)]

@@ -11,8 +11,6 @@
           <p v-else class="text-body-2 text-medium-emphasis pa-4">Trash is empty.</p>
         </template>
 
-        <template #media />
-
         <template v-if="isOwner" #settings>
           <v-list density="compact" nav>
             <v-list-item prepend-icon="mdi-tune" title="General" :to="`/w/${worldId}/settings/general`" />
@@ -224,7 +222,6 @@
   const sidebarTabs = computed<SidebarTab[]>(() => [
     { value: 'entities', icon: 'mdi-file-tree', label: 'Entities' },
     { value: 'trash', icon: 'mdi-delete-restore', label: 'Trash' },
-    { value: 'media', icon: 'mdi-image-multiple', label: 'Media', disabled: true },
     ...isOwner.value ? [{ value: 'settings', icon: 'mdi-cog', label: 'Settings' }] : [],
   ])
 

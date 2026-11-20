@@ -38,16 +38,24 @@
       <div class="entity-content flex-1-1-100 overflow-y-auto">
         <EntityMap v-if="entity.map" :map="entity.map" @open="openEntity" />
 
-        <EntityArticle
-          v-else
-          class="pa-4"
-          :editable="articleEditable"
-          :entity-id="entity.id"
-          :model-value="entity.article?.markdown ?? ''"
-          :world-id="worldId"
-          @update:model-value="handleArticleChange"
-          @upload-error="uploadError = $event"
-        />
+        <template v-else>
+          <EntityArticle
+            class="pa-4"
+            :editable="articleEditable"
+            :entity-id="entity.id"
+            :model-value="entity.article?.markdown ?? ''"
+            :world-id="worldId"
+            @update:model-value="handleArticleChange"
+            @upload-error="uploadError = $event"
+          />
+
+          <EntityMediaGallery
+            v-if="articleEditable"
+            class="px-4 pb-4"
+            :entity-id="entity.id"
+            :world-id="worldId"
+          />
+        </template>
       </div>
     </template>
   </v-container>
@@ -60,6 +68,7 @@
   import { getEntity, setArticle } from '@/api/entities'
   import EntityArticle from '@/components/EntityArticle.vue'
   import EntityMap from '@/components/EntityMap.vue'
+  import EntityMediaGallery from '@/components/EntityMediaGallery.vue'
   import { entityTrashVersionKey } from '@/utils/nav'
 
   const ARTICLE_SAVE_DEBOUNCE_MS = 500

@@ -439,3 +439,7 @@ class FakeMediaStorage:
 
     async def delete_prefix(self, *, prefix: str) -> None:
         self.deleted_prefixes.append(prefix)
+        self.created_policies = [key for key in self.created_policies if not key.startswith(prefix)]
+
+    async def list_objects(self, *, prefix: str) -> Sequence[str]:
+        return [key for key in self.created_policies if key.startswith(prefix)]

@@ -5,6 +5,7 @@ presigned S3/MinIO URLs so file bytes never pass through this backend - it only 
 whether to mint a signature, never streams a file itself.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -38,4 +39,8 @@ class MediaStorage(Protocol):
 
         Also used to delete one exact object, by passing its full key as `prefix`.
         """
+        ...
+
+    async def list_objects(self, *, prefix: str) -> Sequence[str]:
+        """Every object key starting with `prefix`, in no particular order."""
         ...

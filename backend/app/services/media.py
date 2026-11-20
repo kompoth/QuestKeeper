@@ -8,6 +8,7 @@ minted fresh on every hit to that route, never stored anywhere.
 """
 
 import secrets
+from collections.abc import Sequence
 
 from app.domain.media import MediaStorage, UploadPolicy
 from app.domain.models import EntityId, UserId, WorldId
@@ -94,3 +95,29 @@ async def read_redirect_url(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id
         raise PermissionDeniedError(user_id, entity_id)
 
     return await storage.generate_read_url(key=media_key(world_id, entity_id, file_id), ttl_seconds=ttl_seconds)
+
+
+async def list_media(
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> Sequence[str]:
+    """Every file_id currently uploaded under this entity - the object store is the only source of
+    truth for this (nothing in the database tracks it), so this always reflects real storage state."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.read:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    prefix = entity_media_prefix(world_id, entity_id)
+    keys = await storage.list_objects(prefix=prefix)
+    return [key.removeprefix(prefix) for key in keys]
+
+
+async def delete_media(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id distinct params
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId, file_id: str
+) -> None:
+    """Permanently deletes one file - nothing else ever restores it, and any content still
+    referencing it (article markdown, a Map's pic) is left pointing at a now-404ing path."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.write:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    await storage.delete_prefix(prefix=media_key(world_id, entity_id, file_id))

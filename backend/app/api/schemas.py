@@ -94,6 +94,11 @@ class MediaUploadOut(BaseModel):
     fields: dict[str, str]
 
 
+class MediaItemOut(BaseModel):
+    file_id: str
+    path: str
+
+
 class CreateEntityRequest(BaseModel):
     name: str
     parent_id: EntityId | None = None
