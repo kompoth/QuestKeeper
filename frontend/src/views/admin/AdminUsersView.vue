@@ -73,7 +73,7 @@
         <v-select v-model="newUserRole" :items="roles" label="Role" variant="outlined" />
 
         <p class="text-body-2 text-medium-emphasis">
-          A set-password email will be sent to this address - no password is entered here.
+          A set-password email will be sent to this address. No password is entered here.
         </p>
       </v-card-text>
 
@@ -212,7 +212,7 @@
     try {
       await createUser(newUsername.value.trim(), newUserEmail.value.trim(), newUserRole.value)
       addUserDialog.value = false
-      notify(`Account created - set-password email sent to ${newUserEmail.value.trim()}`, 'success')
+      notify(`Account created. Set-password email sent to ${newUserEmail.value.trim()}`, 'success')
       if (lastOptions.value) {
         await fetchPage(lastOptions.value)
       }

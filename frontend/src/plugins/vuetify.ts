@@ -79,7 +79,7 @@ const flexokiLight: ThemeDefinition = {
   },
   variables: {
     'border-color': flexoki.base[150], // ui-2
-    'border-opacity': 1,
+    'border-opacity': 0.2,
     'high-emphasis-opacity': 1, // tx at full strength
     'medium-emphasis-opacity': 0.6, // ≈ tx-2 (base-600)
     'theme-code': flexoki.base[50],
@@ -125,7 +125,7 @@ const flexokiDark: ThemeDefinition = {
   },
   variables: {
     'border-color': flexoki.base[850], // ui-2
-    'border-opacity': 1,
+    'border-opacity': 0.2,
     'high-emphasis-opacity': 1,
     'medium-emphasis-opacity': 0.6, // ≈ tx-2 (base-500)
     'theme-code': flexoki.base[900],

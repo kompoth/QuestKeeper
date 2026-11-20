@@ -5,7 +5,7 @@
     <div class="text-subtitle-1 text-error font-weight-bold mb-2">Danger zone</div>
 
     <p class="text-body-2 mb-4">
-      Deleting <strong>{{ world?.name }}</strong> moves it to the trash - you can restore it from there later,
+      Deleting <strong>{{ world?.name }}</strong> moves it to the trash. You can restore it from there later,
       or delete it forever. Type its name below to confirm.
     </p>
 

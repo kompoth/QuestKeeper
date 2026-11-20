@@ -60,7 +60,7 @@
       <v-card-text>
         <p class="mb-4">
           This permanently deletes "{{ purgeTarget.name }}", every one of its pages, and their uploaded media.
-          Type its name below to confirm - this cannot be undone.
+          Type its name below to confirm. This cannot be undone.
         </p>
 
         <v-text-field v-model="purgeConfirmation" label="World name" variant="outlined" />
