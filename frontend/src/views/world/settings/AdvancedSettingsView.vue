@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid>
+  <v-container>
     <h1 class="text-h5 mb-4">Advanced</h1>
 
     <div class="text-subtitle-1 text-error font-weight-bold mb-2">Danger zone</div>

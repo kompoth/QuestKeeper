@@ -2,6 +2,7 @@
 
 import secrets
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ from app.domain.mail import Mailer
 from app.domain.models import (
     EntityId,
     EntityPermission,
+    PermissionLevel,
     User,
     UserId,
     UserRole,
@@ -20,9 +22,37 @@ from app.domain.models import (
 )
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
-from app.services.access import EntityNotFoundError, InviteNotFoundError, PermissionDeniedError, WorldNotFoundError
+from app.services.access import (
+    EntityNotFoundError,
+    InviteNotFoundError,
+    PermissionDeniedError,
+    UserNotFoundError,
+    WorldNotFoundError,
+)
 
 INVITE_TOKEN_TTL = timedelta(days=7)
+
+
+@dataclass(frozen=True)
+class EntityGrant:
+    user: User
+    level: PermissionLevel
+    invite_accepted: bool | None
+    """None if the grantee has no invite record for this world at all - never invited, just granted directly."""
+
+
+@dataclass(frozen=True)
+class InheritedEntityGrant:
+    user: User
+    level: PermissionLevel
+    invite_accepted: bool | None
+    from_entity_id: EntityId
+
+
+@dataclass(frozen=True)
+class EntityPermissionsView:
+    direct: Sequence[EntityGrant]
+    inherited: Sequence[InheritedEntityGrant]
 
 
 async def _require_owner(repos: Repositories, user_id: UserId, world_id: WorldId) -> World:
@@ -34,14 +64,25 @@ async def _require_owner(repos: Repositories, user_id: UserId, world_id: WorldId
     return world
 
 
-async def grant_permission(repos: Repositories, user_id: UserId, world_id: WorldId, grant: EntityPermission) -> None:
+async def grant_permission(  # noqa: PLR0913, PLR0917 -- repos/world_id/entity_id/grantee_email/level distinct params
+    repos: Repositories,
+    user_id: UserId,
+    world_id: WorldId,
+    entity_id: EntityId,
+    grantee_email: str,
+    level: PermissionLevel,
+) -> None:
     await _require_owner(repos, user_id, world_id)
 
-    entity = await repos.entities.get(world_id, grant.entity_id)
+    entity = await repos.entities.get(world_id, entity_id)
     if entity is None:
-        raise EntityNotFoundError(grant.entity_id)
+        raise EntityNotFoundError(entity_id)
 
-    await repos.permissions.grant(grant.user_id, grant.entity_id, grant.level)
+    grantee = await repos.users.get_by_email(grantee_email)
+    if grantee is None:
+        raise UserNotFoundError(grantee_email)
+
+    await repos.permissions.grant(grantee.id, entity_id, level)
 
 
 async def revoke_permission(
@@ -49,6 +90,55 @@ async def revoke_permission(
 ) -> None:
     await _require_owner(repos, user_id, world_id)
     await repos.permissions.revoke(grantee_id, entity_id)
+
+
+async def get_entity_permissions(
+    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> EntityPermissionsView:
+    """Direct grants on this entity, plus grants inherited from ancestors (closest wins per user). Owner-only."""
+    await _require_owner(repos, user_id, world_id)
+
+    entity = await repos.entities.get(world_id, entity_id)
+    if entity is None:
+        raise EntityNotFoundError(entity_id)
+
+    accepted_by_user_id = {
+        invite.invitee_id: invite.accepted for invite in await repos.invites.get_all_for_world(world_id)
+    }
+
+    async def to_grants(permission_grants: Sequence[EntityPermission]) -> list[EntityGrant]:
+        grants = []
+        for permission_grant in permission_grants:
+            grantee = await repos.users.get_by_id(permission_grant.user_id)
+            if grantee is not None:
+                grants.append(
+                    EntityGrant(
+                        user=grantee,
+                        level=permission_grant.level,
+                        invite_accepted=accepted_by_user_id.get(grantee.id),
+                    )
+                )
+        return grants
+
+    direct = await to_grants(await repos.permissions.get_grants_for_entity(entity_id))
+    seen_user_ids = {grant.user.id for grant in direct}
+
+    inherited: list[InheritedEntityGrant] = []
+    for ancestor_id in await repos.entities.get_ancestor_ids(world_id, entity_id):
+        for grant in await to_grants(await repos.permissions.get_grants_for_entity(ancestor_id)):
+            if grant.user.id in seen_user_ids:
+                continue
+            seen_user_ids.add(grant.user.id)
+            inherited.append(
+                InheritedEntityGrant(
+                    user=grant.user,
+                    level=grant.level,
+                    invite_accepted=grant.invite_accepted,
+                    from_entity_id=ancestor_id,
+                )
+            )
+
+    return EntityPermissionsView(direct=direct, inherited=inherited)
 
 
 async def create_invite(  # noqa: PLR0913 -- repos/mailer/frontend_origin are distinct capability params, not data fields

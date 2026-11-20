@@ -68,6 +68,7 @@ class Entity(BaseModel):
     updated_at: datetime | None = None
     created_by: UserId | None = None
     updated_by: UserId | None = None
+    deleted_at: datetime | None = None
 
 
 class World(BaseModel):

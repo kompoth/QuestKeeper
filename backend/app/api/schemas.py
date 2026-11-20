@@ -1,10 +1,11 @@
 """Request/response schemas for shapes the domain models don't fit directly.
 
-`World` and `EntityPermission` are returned or accepted as-is elsewhere — they're already clean
-Pydantic models with nothing sensitive to hide. `Entity` is wrapped by `EntityOut` below, to carry
-the caller's resolved access alongside it. `WorldInvite` is not returned as-is either: it carries
-`confirmation_token` (a credential) and `invitee_id` (privacy-sensitive) - see `InviteSummary`
-and `PendingInviteOut` below, which redact both.
+`World` is returned as-is from most routes - it's already a clean Pydantic model with nothing
+sensitive to hide. The world list is the exception: it's wrapped by `WorldOut` below, to carry the
+owner's display name alongside it. `Entity` is wrapped by `EntityOut` below too, to carry the
+caller's resolved access alongside it. `WorldInvite` is not returned as-is either: it carries
+`confirmation_token` (a credential) and `invitee_id` (privacy-sensitive) - see `InviteSummary` and
+`PendingInviteOut` below, which redact both.
 """
 
 from datetime import datetime
@@ -16,10 +17,12 @@ from app.domain.models import (
     EntityId,
     Map,
     MapPin,
+    PermissionLevel,
     RuntimeSettings,
     UserId,
     UserRole,
     UserStatus,
+    World,
     WorldId,
     WorldInvite,
 )
@@ -50,6 +53,12 @@ class UpdateWorldRequest(BaseModel):
     name: str
     description: str | None = None
     pic: str | None = None
+
+
+class WorldOut(World):
+    """`World` plus the owner's display name, for a list the caller didn't create themselves."""
+
+    owner_name: str
 
 
 class EntityAccessOut(BaseModel):
@@ -93,6 +102,36 @@ class SetMapRequest(BaseModel):
         return Map(pic=self.pic, pins={(pin.x, pin.y): pin for pin in self.pins})
 
 
+class GrantPermissionRequest(BaseModel):
+    entity_id: EntityId
+    grantee_email: str
+    level: PermissionLevel
+
+
+class EntityGrantOut(BaseModel):
+    """A user's permission level on an entity, enriched with the user's email/name for display.
+
+    `name` is null for a still-unregistered grantee - revealing it would leak that identity the
+    same way an unaccepted invite's name would.
+    """
+
+    user_id: UserId
+    email: str
+    name: str | None
+    level: PermissionLevel
+
+
+class InheritedEntityGrantOut(EntityGrantOut):
+    """An `EntityGrantOut` inherited from an ancestor entity, rather than granted directly."""
+
+    from_entity_id: EntityId
+
+
+class EntityPermissionsOut(BaseModel):
+    direct: list[EntityGrantOut]
+    inherited: list[InheritedEntityGrantOut]
+
+
 class CreateInviteRequest(BaseModel):
     invitee_email: str
 
@@ -104,14 +143,19 @@ class ConfirmInviteRequest(BaseModel):
 
 
 class InviteSummary(BaseModel):
-    """The owner's view of an invite: email + status, never invitee_id or the token."""
+    """The owner's view of an invite: email/name + status, never invitee_id or the token.
+
+    `invitee_name` is null until the invite is accepted - revealing it any earlier would leak
+    whether the invitee already had a registered account, before they themselves chose to accept.
+    """
 
     invitee_email: str
+    invitee_name: str | None
     accepted: bool
 
     @classmethod
-    def from_invite(cls, invite: WorldInvite, invitee_email: str) -> InviteSummary:
-        return cls(invitee_email=invitee_email, accepted=invite.accepted)
+    def from_invite(cls, invite: WorldInvite, invitee_email: str, invitee_name: str | None) -> InviteSummary:
+        return cls(invitee_email=invitee_email, invitee_name=invitee_name, accepted=invite.accepted)
 
 
 class PendingInviteOut(BaseModel):

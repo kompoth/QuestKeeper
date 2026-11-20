@@ -25,6 +25,7 @@ interface EntityDto {
   updated_at: string | null
   created_by: string | null
   updated_by: string | null
+  deleted_at: string | null
   access: EntityAccessDto
 }
 
@@ -46,12 +47,18 @@ function toEntity (dto: EntityDto): Entity {
     updatedAt: dto.updated_at,
     createdBy: dto.created_by,
     updatedBy: dto.updated_by,
+    deletedAt: dto.deleted_at,
     access: { read: dto.access.read, write: dto.access.write, canDelete: dto.access.can_delete },
   }
 }
 
 export async function listEntities (worldId: string): Promise<Entity[]> {
   const dtos = await apiFetch<EntityDto[]>(`/worlds/${worldId}/entities`)
+  return dtos.map(dto => toEntity(dto))
+}
+
+export async function listTrash (worldId: string): Promise<Entity[]> {
+  const dtos = await apiFetch<EntityDto[]>(`/worlds/${worldId}/entities/trash`)
   return dtos.map(dto => toEntity(dto))
 }
 
@@ -82,6 +89,20 @@ export async function renameEntity (worldId: string, entityId: string, name: str
 
 export async function deleteEntity (worldId: string, entityId: string): Promise<void> {
   await apiFetch<null>(`/worlds/${worldId}/entities/${entityId}`, { method: 'DELETE' })
+}
+
+export async function restoreEntity (worldId: string, entityId: string): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/restore`, { method: 'POST' })
+  return toEntity(dto)
+}
+
+export async function restoreEntityBranch (worldId: string, entityId: string): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/restore-branch`, { method: 'POST' })
+  return toEntity(dto)
+}
+
+export async function purgeEntity (worldId: string, entityId: string): Promise<void> {
+  await apiFetch<null>(`/worlds/${worldId}/entities/${entityId}/purge`, { method: 'DELETE' })
 }
 
 export async function setArticle (worldId: string, entityId: string, markdown: string): Promise<Entity> {

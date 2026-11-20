@@ -3,11 +3,12 @@ import { apiFetch } from '@/api/client'
 
 interface InviteSummaryDto {
   invitee_email: string
+  invitee_name: string | null
   accepted: boolean
 }
 
 function toInviteSummary (dto: InviteSummaryDto): InviteSummary {
-  return { inviteeEmail: dto.invitee_email, accepted: dto.accepted }
+  return { inviteeEmail: dto.invitee_email, inviteeName: dto.invitee_name, accepted: dto.accepted }
 }
 
 export async function listInvites (worldId: string): Promise<InviteSummary[]> {

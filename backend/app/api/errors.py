@@ -12,6 +12,7 @@ from app.services.access import (
     CannotChangeOwnRoleError,
     EmailAlreadyRegisteredError,
     EntityNotFoundError,
+    EntityNotInTrashError,
     InvalidStatusTransitionError,
     InviteNotFoundError,
     InviteTokenNotFoundError,
@@ -72,6 +73,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         app.add_exception_handler(exc_type, _forbidden)
     for exc_type in (InvalidCredentialsError, InvalidSessionError):
         app.add_exception_handler(exc_type, _unauthorized)
-    for exc_type in (EmailAlreadyRegisteredError, InvalidStatusTransitionError):
+    for exc_type in (EmailAlreadyRegisteredError, InvalidStatusTransitionError, EntityNotInTrashError):
         app.add_exception_handler(exc_type, _conflict)
     app.add_exception_handler(MailDeliveryError, _service_unavailable)

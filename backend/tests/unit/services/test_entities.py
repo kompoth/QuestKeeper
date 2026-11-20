@@ -1,8 +1,16 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.domain.models import Article, Entity, Map, MapPin, PermissionLevel, World
 from app.domain.repositories import Repositories
-from app.services.access import EntityNotFoundError, IdCollisionError, PermissionDeniedError, WorldNotFoundError
+from app.services.access import (
+    EntityNotFoundError,
+    EntityNotInTrashError,
+    IdCollisionError,
+    PermissionDeniedError,
+    WorldNotFoundError,
+)
 from app.services.entities import (
     clear_article,
     clear_map,
@@ -10,7 +18,11 @@ from app.services.entities import (
     delete_entity,
     get_entity,
     list_entities,
+    list_trash,
+    purge_entity,
     rename_entity,
+    restore_entity,
+    restore_entity_branch,
     set_article,
     set_map,
 )
@@ -33,9 +45,14 @@ ENTITY_ID = "e1"
 PARENT_ID = "e0"
 
 
-def make_repos(*, entity=None, world=None, ancestor_ids=(), grants=None, collide_next_creates=0) -> Repositories:
+def make_repos(
+    *, entity=None, other_entities=(), world=None, ancestor_ids=(), grants=None, collide_next_creates=0
+) -> Repositories:
+    entities_by_id = {other.id: other for other in other_entities}
+    if entity:
+        entities_by_id[entity.id] = entity
     entities = FakeEntityRepository(
-        entities_by_id={entity.id: entity} if entity else {},
+        entities_by_id=entities_by_id,
         ancestor_ids_by_entity={entity.id: list(ancestor_ids)} if entity else {},
         collide_next_creates=collide_next_creates,
     )
@@ -83,6 +100,19 @@ async def test_list_entities_reports_write_access_from_the_callers_grant():
 
     assert access.read is True
     assert access.write is True
+
+
+async def test_list_entities_excludes_entities_the_caller_cannot_read():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Readable")
+    other_entity = Entity(id="e2", world_id=WORLD_ID, name="Unreadable")
+    repos = make_repos(
+        entity=entity, other_entities=[other_entity], world=world, grants={ENTITY_ID: PermissionLevel.READ}
+    )
+
+    result = await list_entities(repos, USER_ID, WORLD_ID)
+
+    assert [found.id for found, _ in result] == [ENTITY_ID]
 
 
 async def test_list_entities_raises_when_caller_has_no_grants_in_the_world():
@@ -309,3 +339,132 @@ async def test_clear_map_removes_map_with_write_access():
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
     assert updated.map is None
+
+
+async def test_list_trash_returns_only_deleted_entities_the_caller_can_read():
+    now = datetime.now(UTC)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    readable = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Readable", deleted_at=now)
+    unreadable = Entity(id="e2", world_id=WORLD_ID, name="Unreadable", deleted_at=now)
+    repos = make_repos(
+        entity=readable, other_entities=[unreadable], world=world, grants={ENTITY_ID: PermissionLevel.READ}
+    )
+
+    result = await list_trash(repos, USER_ID, WORLD_ID)
+
+    assert [found.id for found, _ in result] == [ENTITY_ID]
+
+
+async def test_restore_entity_also_restores_still_trashed_ancestors():
+    now = datetime.now(UTC)
+    parent = Entity(id=PARENT_ID, world_id=WORLD_ID, name="Parent", deleted_at=now)
+    child = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Child", parent=PARENT_ID, deleted_at=now)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=child,
+        other_entities=[parent],
+        world=world,
+        ancestor_ids=[PARENT_ID],
+        grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
+    )
+
+    await restore_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+    restored_child = await repos.entities.get(WORLD_ID, ENTITY_ID)
+    restored_parent = await repos.entities.get(WORLD_ID, PARENT_ID)
+    assert restored_child is not None
+    assert restored_parent is not None
+
+
+async def test_restore_entity_stops_at_first_alive_ancestor():
+    now = datetime.now(UTC)
+    grandparent = Entity(id="gp", world_id=WORLD_ID, name="Grandparent", updated_by="someone-else")
+    parent = Entity(id=PARENT_ID, world_id=WORLD_ID, name="Parent", parent="gp", deleted_at=now)
+    child = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Child", parent=PARENT_ID, deleted_at=now)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=child,
+        other_entities=[parent, grandparent],
+        world=world,
+        ancestor_ids=[PARENT_ID, "gp"],
+        grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
+    )
+
+    await restore_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+    restored_grandparent = await repos.entities.get(WORLD_ID, "gp")
+    assert restored_grandparent is not None
+    assert restored_grandparent.updated_by == "someone-else"  # already alive - the cascade stopped here
+
+
+async def test_restore_entity_branch_restores_descendants_and_ancestors():
+    now = datetime.now(UTC)
+    parent = Entity(id=PARENT_ID, world_id=WORLD_ID, name="Parent", deleted_at=now)
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", parent=PARENT_ID, deleted_at=now)
+    child = Entity(id="child1", world_id=WORLD_ID, name="Child", parent=ENTITY_ID, deleted_at=now)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=entity,
+        other_entities=[parent, child],
+        world=world,
+        ancestor_ids=[PARENT_ID],
+        grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
+    )
+
+    await restore_entity_branch(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+    assert (await repos.entities.get(WORLD_ID, ENTITY_ID)) is not None
+    assert (await repos.entities.get(WORLD_ID, PARENT_ID)) is not None
+    assert (await repos.entities.get(WORLD_ID, "child1")) is not None
+
+
+async def test_restore_entity_raises_when_not_in_trash():
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", parent=PARENT_ID)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=entity,
+        world=world,
+        ancestor_ids=[PARENT_ID],
+        grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
+    )
+
+    with pytest.raises(EntityNotInTrashError):
+        await restore_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+
+async def test_restore_entity_raises_without_delete_access():
+    now = datetime.now(UTC)
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", parent=PARENT_ID, deleted_at=now)
+    parent = Entity(id=PARENT_ID, world_id=WORLD_ID, name="Parent")
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=entity,
+        other_entities=[parent],
+        world=world,
+        ancestor_ids=[PARENT_ID],
+        grants={ENTITY_ID: PermissionLevel.WRITE},
+    )
+
+    with pytest.raises(PermissionDeniedError):
+        await restore_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+
+async def test_purge_entity_removes_entity_and_descendants():
+    now = datetime.now(UTC)
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", parent=PARENT_ID, deleted_at=now)
+    parent = Entity(id=PARENT_ID, world_id=WORLD_ID, name="Parent")
+    child = Entity(id="child1", world_id=WORLD_ID, name="Child", parent=ENTITY_ID, deleted_at=now)
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(
+        entity=entity,
+        other_entities=[parent, child],
+        world=world,
+        ancestor_ids=[PARENT_ID],
+        grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
+    )
+
+    await purge_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+
+    assert (await repos.entities.get(WORLD_ID, ENTITY_ID)) is None
+    assert (await repos.entities.get(WORLD_ID, "child1")) is None
+    assert (await repos.entities.get(WORLD_ID, PARENT_ID)) is not None

@@ -41,7 +41,11 @@ class UserNotFoundError(Exception):
 
 
 class PermissionDeniedError(Exception):
-    pass
+    """Raised with (user_id, resource_id) for internal use - str() stays generic, since those ids reach the caller
+    verbatim as the 403 response body otherwise."""
+
+    def __str__(self) -> str:
+        return "Permission denied"
 
 
 class CannotBanSelfError(Exception):
@@ -60,11 +64,19 @@ class IdCollisionError(Exception):
     """A newly generated World/Entity id already exists - the caller should regenerate and retry."""
 
 
+class EntityNotInTrashError(Exception):
+    """Raised when restore/restore-branch/purge targets an entity that exists but isn't soft-deleted."""
+
+
 async def get_entity_access(
-    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
+    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False
 ) -> EntityAccess:
-    """A user's access to an entity: fetched from the repos, decided by `permissions`."""
-    entity = await repos.entities.get(world_id, entity_id)
+    """A user's access to an entity: fetched from the repos, decided by `permissions`.
+
+    `include_deleted` lets trash flows (read, restore, purge) resolve access for a soft-deleted entity;
+    every other caller leaves it unset, so a soft-deleted entity still raises EntityNotFoundError there.
+    """
+    entity = await repos.entities.get(world_id, entity_id, include_deleted=include_deleted)
     if entity is None:
         raise EntityNotFoundError(entity_id)
 

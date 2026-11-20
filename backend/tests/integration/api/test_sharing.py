@@ -42,7 +42,7 @@ async def test_grant_permission_requires_ownership(async_client, db_session):
 
     response = await async_client.post(
         f"/worlds/{world_id}/permissions",
-        json={"user_id": "other", "entity_id": entity_id, "level": "write"},
+        json={"grantee_email": "other@example.com", "entity_id": entity_id, "level": "write"},
         headers=_csrf_headers(async_client),
     )
 
@@ -60,15 +60,111 @@ async def test_grant_and_revoke_permission(async_client, db_session):
 
     grant_response = await async_client.post(
         f"/worlds/{world_id}/permissions",
-        json={"user_id": "grantee", "entity_id": entity_id, "level": "write"},
+        json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "write"},
         headers=_csrf_headers(async_client),
     )
     assert grant_response.status_code == 200
+
+    permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
+    assert permissions_response.status_code == 200
+    assert permissions_response.json() == {
+        "direct": [{"user_id": "grantee", "email": "grantee@example.com", "name": "Grantee", "level": "write"}],
+        "inherited": [],
+    }
 
     revoke_response = await async_client.delete(
         f"/worlds/{world_id}/permissions/grantee/{entity_id}", headers=_csrf_headers(async_client)
     )
     assert revoke_response.status_code == 204
+
+    permissions_after_revoke = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
+    assert permissions_after_revoke.json() == {"direct": [], "inherited": []}
+
+
+async def test_get_permissions_reports_null_name_for_a_grantee_with_an_unaccepted_invite(async_client, db_session):
+    """A grantee's name must stay hidden while they have a not-yet-accepted invite to this world -
+    revealing it earlier would leak that the email belongs to a known account before they accept."""
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+    entity_id = await _create_entity(async_client, world_id)
+    db_session.add(
+        UserRow(id="grantee", name="Grantee", email="grantee@example.com", hashed_password="x", role=UserRole.MEMBER)
+    )
+    await db_session.commit()
+
+    await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "grantee@example.com"},
+        headers=_csrf_headers(async_client),
+    )
+    await async_client.post(
+        f"/worlds/{world_id}/permissions",
+        json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "write"},
+        headers=_csrf_headers(async_client),
+    )
+
+    permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
+    assert permissions_response.status_code == 200
+    [grant] = permissions_response.json()["direct"]
+    assert grant["email"] == "grantee@example.com"
+    assert grant["name"] is None
+
+
+async def test_get_permissions_reports_name_once_the_grantees_invite_is_accepted(async_client, db_session):
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+    entity_id = await _create_entity(async_client, world_id)
+    db_session.add(
+        UserRow(
+            id="grantee",
+            name="Grantee",
+            email="grantee@example.com",
+            hashed_password=hash_password(PASSWORD),
+            role=UserRole.MEMBER,
+        )
+    )
+    await db_session.commit()
+
+    await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "grantee@example.com"},
+        headers=_csrf_headers(async_client),
+    )
+    await async_client.post(
+        f"/worlds/{world_id}/permissions",
+        json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "write"},
+        headers=_csrf_headers(async_client),
+    )
+
+    await async_client.post("/auth/login", json={"email": "grantee@example.com", "password": PASSWORD})
+    await async_client.post(f"/invites/{world_id}/accept", headers=_csrf_headers(async_client))
+
+    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
+    [grant] = permissions_response.json()["direct"]
+    assert grant["name"] == "Grantee"
+
+
+async def test_get_permissions_reports_name_for_a_grantee_with_no_invite_at_all(async_client, db_session):
+    """Granting access directly, with no invite ever sent, reveals nothing new - the owner already
+    knows the email resolves to a real account the moment the grant itself succeeds."""
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+    entity_id = await _create_entity(async_client, world_id)
+    db_session.add(
+        UserRow(id="grantee", name="Grantee", email="grantee@example.com", hashed_password="x", role=UserRole.MEMBER)
+    )
+    await db_session.commit()
+
+    await async_client.post(
+        f"/worlds/{world_id}/permissions",
+        json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "write"},
+        headers=_csrf_headers(async_client),
+    )
+
+    permissions_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/permissions")
+    [grant] = permissions_response.json()["direct"]
+    assert grant["name"] == "Grantee"
 
 
 async def test_create_invite_and_list_and_accept(async_client, db_session):
@@ -92,7 +188,11 @@ async def test_create_invite_and_list_and_accept(async_client, db_session):
     )
     assert invite_response.status_code == 200
     assert "invitee_id" not in invite_response.json()
-    assert invite_response.json() == {"invitee_email": "invitee@example.com", "accepted": False}
+    assert invite_response.json() == {
+        "invitee_email": "invitee@example.com",
+        "invitee_name": None,
+        "accepted": False,
+    }
 
     await async_client.post("/auth/login", json={"email": "invitee@example.com", "password": PASSWORD})
 
@@ -103,6 +203,60 @@ async def test_create_invite_and_list_and_accept(async_client, db_session):
 
     accept_response = await async_client.post(f"/invites/{world_id}/accept", headers=_csrf_headers(async_client))
     assert accept_response.status_code == 200
+
+    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    post_accept_response = await async_client.get(f"/worlds/{world_id}/invites")
+    assert post_accept_response.status_code == 200
+    assert post_accept_response.json() == [
+        {"invitee_email": "invitee@example.com", "invitee_name": "Invitee", "accepted": True},
+    ]
+
+
+async def test_list_invites_reports_null_name_for_a_still_unregistered_invitee(async_client, db_session):
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+
+    await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "stranger@example.com"},
+        headers=_csrf_headers(async_client),
+    )
+
+    list_response = await async_client.get(f"/worlds/{world_id}/invites")
+    assert list_response.status_code == 200
+    [invite] = list_response.json()
+    assert invite["invitee_email"] == "stranger@example.com"
+    assert invite["invitee_name"] is None
+
+
+async def test_list_invites_reports_null_name_for_a_registered_but_unaccepted_invitee(async_client, db_session):
+    """A pre-existing account's real name must stay hidden until they themselves accept - otherwise
+    the owner could tell whether an invited email already has an account before acceptance."""
+    await _login(async_client, db_session, user_id="owner")
+    world_id = await _create_world(async_client)
+    db_session.add(
+        UserRow(
+            id="invitee",
+            name="Invitee",
+            email="invitee@example.com",
+            hashed_password=hash_password(PASSWORD),
+            role=UserRole.MEMBER,
+        )
+    )
+    await db_session.commit()
+
+    await async_client.post(
+        f"/worlds/{world_id}/invites",
+        json={"invitee_email": "invitee@example.com"},
+        headers=_csrf_headers(async_client),
+    )
+
+    list_response = await async_client.get(f"/worlds/{world_id}/invites")
+    assert list_response.status_code == 200
+    [invite] = list_response.json()
+    assert invite["invitee_email"] == "invitee@example.com"
+    assert invite["invitee_name"] is None
+    assert invite["accepted"] is False
 
 
 async def test_expel_invitee_deletes_a_pending_invite(async_client, db_session):
@@ -263,7 +417,7 @@ async def test_owner_lists_all_invites_for_world_without_leaking_invitee_id(asyn
     invites = response.json()
     assert len(invites) == 2
     for invite in invites:
-        assert set(invite.keys()) == {"invitee_email", "accepted"}
+        assert set(invite.keys()) == {"invitee_email", "invitee_name", "accepted"}
 
 
 async def test_list_invites_for_world_requires_ownership(async_client, db_session):

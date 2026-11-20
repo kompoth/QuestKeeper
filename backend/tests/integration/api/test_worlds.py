@@ -60,6 +60,26 @@ async def test_create_and_list_worlds(async_client, db_session):
     assert [world["name"] for world in list_response.json()] == ["My World"]
 
 
+async def test_list_my_worlds_includes_owner_name_for_a_world_held_via_grant(async_client, db_session):
+    await _login(async_client, db_session)
+    await _create_owned_world(db_session)
+    now = datetime.now(UTC)
+    db_session.add(
+        EntityRow(
+            id="e1", world_id="w1", name="Root", created_at=now, updated_at=now, created_by="owner", updated_by="owner"
+        )
+    )
+    await db_session.commit()
+    db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.READ))
+    await db_session.commit()
+
+    response = await async_client.get("/worlds")
+
+    assert response.status_code == 200
+    [world] = response.json()
+    assert world["owner_name"] == "Owner"
+
+
 async def test_get_world_returns_404_when_not_found(async_client, db_session):
     await _login(async_client, db_session)
 

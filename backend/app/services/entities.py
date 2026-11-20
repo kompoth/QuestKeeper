@@ -9,6 +9,8 @@ from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
 from app.services.access import (
     FULL_ACCESS,
+    EntityNotFoundError,
+    EntityNotInTrashError,
     IdCollisionError,
     PermissionDeniedError,
     WorldNotFoundError,
@@ -19,7 +21,7 @@ from app.services.access import (
 async def list_entities(
     repos: Repositories, user_id: UserId, world_id: WorldId
 ) -> Sequence[tuple[Entity, EntityAccess]]:
-    """Every entity in the world, paired with the caller's access to each; requires world membership."""
+    """Every entity the caller can read in the world, paired with their access to each; requires world membership."""
     world = await repos.worlds.get(world_id)
     if world is None:
         raise WorldNotFoundError(world_id)
@@ -43,17 +45,47 @@ async def list_entities(
             current = parent_by_id.get(current)
         return ids
 
-    return [(entity, permissions.resolve_access(entity.id, ancestor_ids(entity.id), grants)) for entity in entities]
+    results = [(entity, permissions.resolve_access(entity.id, ancestor_ids(entity.id), grants)) for entity in entities]
+    return [(entity, access) for entity, access in results if access.read]
+
+
+async def list_trash(repos: Repositories, user_id: UserId, world_id: WorldId) -> Sequence[tuple[Entity, EntityAccess]]:
+    """Every soft-deleted entity the caller can read, paired with their access to each.
+
+    Unlike `list_entities`, a trashed entity's ancestor chain can include alive entities (its parent,
+    if only part of a once-larger subtree is still tombstoned) - so access is resolved per entity via
+    `get_ancestor_ids`, not from an in-memory parent map built from this call's own (deleted-only) result.
+    """
+    world = await repos.worlds.get(world_id)
+    if world is None:
+        raise WorldNotFoundError(world_id)
+
+    entities = await repos.entities.list_trash(world_id)
+
+    if permissions.is_owner(world, user_id):
+        return [(entity, FULL_ACCESS) for entity in entities]
+
+    grants = await repos.permissions.get_grants(world_id, user_id)
+    if not grants:
+        raise PermissionDeniedError(user_id, world_id)
+
+    results = []
+    for entity in entities:
+        ancestor_ids = await repos.entities.get_ancestor_ids(world_id, entity.id)
+        results.append((entity, permissions.resolve_access(entity.id, ancestor_ids, grants)))
+    return [(entity, access) for entity, access in results if access.read]
 
 
 async def get_entity(
     repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
 ) -> tuple[Entity, EntityAccess]:
-    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    """A single entity the caller can read - soft-deleted entities are included, so a trashed entity's
+    page stays viewable (read-only) for anyone who could already read it."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id, include_deleted=True)
     if not access.read:
         raise PermissionDeniedError(user_id, entity_id)
 
-    entity = await repos.entities.get(world_id, entity_id)
+    entity = await repos.entities.get(world_id, entity_id, include_deleted=True)
     if entity is None:
         raise RuntimeError(f"get_entity() found no entity right after get_entity_access() confirmed one: {entity_id}")
     return entity, access
@@ -104,6 +136,41 @@ async def delete_entity(repos: Repositories, user_id: UserId, world_id: WorldId,
         raise PermissionDeniedError(user_id, entity_id)
 
     await repos.entities.delete(world_id, entity_id, user_id)
+
+
+async def _require_trashed_entity_with_delete_access(
+    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> Entity:
+    """Shared guard for restore/restore-branch/purge: same access rule as delete_entity (WRITE on the
+    parent), applied to a soft-deleted entity."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id, include_deleted=True)
+    if not access.can_delete:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    entity = await repos.entities.get(world_id, entity_id, include_deleted=True)
+    if entity is None:
+        raise EntityNotFoundError(entity_id)
+    if entity.deleted_at is None:
+        raise EntityNotInTrashError(entity_id)
+    return entity
+
+
+async def restore_entity(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
+    """Restores only this entity; still-tombstoned descendants remain in trash."""
+    await _require_trashed_entity_with_delete_access(repos, user_id, world_id, entity_id)
+    await repos.entities.restore(world_id, entity_id, user_id)
+
+
+async def restore_entity_branch(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
+    """Restores this entity and every still-tombstoned entity in its descendant subtree."""
+    await _require_trashed_entity_with_delete_access(repos, user_id, world_id, entity_id)
+    await repos.entities.restore_branch(world_id, entity_id, user_id)
+
+
+async def purge_entity(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
+    """Permanently deletes this entity and its entire descendant subtree - irreversible."""
+    await _require_trashed_entity_with_delete_access(repos, user_id, world_id, entity_id)
+    await repos.entities.purge(world_id, entity_id)
 
 
 async def set_article(

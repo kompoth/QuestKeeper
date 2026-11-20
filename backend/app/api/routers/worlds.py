@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Depends, status
 
 from app.api.dependencies import CurrentUser, Repos, require_csrf
-from app.api.schemas import CreateWorldRequest, UpdateWorldRequest
+from app.api.schemas import CreateWorldRequest, UpdateWorldRequest, WorldOut
 from app.domain.models import World, WorldId
 from app.services.worlds import create_world, delete_world, get_world, list_worlds, update_world
 
@@ -13,8 +13,18 @@ router = APIRouter(prefix="/worlds", tags=["worlds"])
 
 
 @router.get("")
-async def list_my_worlds(user: CurrentUser, repos: Repos) -> Sequence[World]:
-    return await list_worlds(repos, user.id)
+async def list_my_worlds(user: CurrentUser, repos: Repos) -> Sequence[WorldOut]:
+    worlds = await list_worlds(repos, user.id)
+
+    owners = {}
+    for world in worlds:
+        if world.owner_id not in owners:
+            owners[world.owner_id] = await repos.users.get_by_id(world.owner_id)
+
+    return [
+        WorldOut(**world.model_dump(), owner_name=owner.name if (owner := owners[world.owner_id]) else "")
+        for world in worlds
+    ]
 
 
 @router.post("", dependencies=[Depends(require_csrf)])

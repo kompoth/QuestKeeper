@@ -7,10 +7,18 @@ interface WorldDto {
   name: string
   description: string | null
   pic: string | null
+  owner_name?: string
 }
 
 function toWorld (dto: WorldDto): World {
-  return { id: dto.id, ownerId: dto.owner_id, name: dto.name, description: dto.description, pic: dto.pic }
+  return {
+    id: dto.id,
+    ownerId: dto.owner_id,
+    name: dto.name,
+    description: dto.description,
+    pic: dto.pic,
+    ownerName: dto.owner_name,
+  }
 }
 
 export async function listWorlds (): Promise<World[]> {

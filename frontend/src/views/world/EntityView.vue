@@ -11,13 +11,12 @@
         </v-toolbar-title>
 
         <div class="mr-5 d-flex ga-2">
-          <v-chip v-if="entity.access.write" label @click="startRename">
-            <v-icon icon="mdi-form-textbox" start />
-            Rename
+          <v-chip v-if="entity.deletedAt" color="warning" label prepend-icon="mdi-delete-restore">
+            In Trash
           </v-chip>
 
           <v-chip
-            v-if="entity.access.write"
+            v-else-if="entity.access.write"
             :color="entityEditable ? 'primary' : 'default'"
             label
             @click="entityEditable = !entityEditable"
@@ -33,7 +32,7 @@
 
         <EntityArticle
           v-else
-          :editable="entityEditable"
+          :editable="articleEditable"
           :model-value="entity.article?.markdown ?? ''"
           @update:model-value="handleArticleChange"
         />
@@ -46,11 +45,10 @@
   import type { Entity } from '@/types/entity'
   import { computed, inject, onBeforeUnmount, ref, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
-  import { getEntity, renameEntity, setArticle } from '@/api/entities'
+  import { getEntity, setArticle } from '@/api/entities'
   import EntityArticle from '@/components/EntityArticle.vue'
   import EntityMap from '@/components/EntityMap.vue'
-  import { useRenameDialog } from '@/composables/useRenameDialog'
-  import { refreshNavItemsKey } from '@/utils/nav'
+  import { entityTrashVersionKey } from '@/utils/nav'
 
   const ARTICLE_SAVE_DEBOUNCE_MS = 500
 
@@ -66,12 +64,11 @@
   const worldId = computed(() => route.params.worldId as string)
 
   const entityEditable = ref(false)
-
-  const { openRenameDialog } = useRenameDialog()
-  const refreshNavItems = inject(refreshNavItemsKey)
+  const entityTrashVersion = inject(entityTrashVersionKey)
 
   const entity = ref<Entity>()
   const entityPath = ref<Entity[]>([])
+  const articleEditable = computed(() => entityEditable.value && !entity.value?.deletedAt)
 
   const breadcrumbItems = computed(() => {
     const items: BreadcrumbItem[] = []
@@ -104,19 +101,13 @@
     entityPath.value = entity.value ? await getEntityPath(entity.value) : []
   }
 
-  watchEffect(refreshEntity)
+  watchEffect(() => {
+    void entityTrashVersion?.value // read so a trash/restore/purge elsewhere also triggers a re-fetch here
+    refreshEntity()
+  })
 
   function openEntity (entityId: string) {
     router.push(`/w/${worldId.value}/e/${entityId}`)
-  }
-
-  async function startRename () {
-    if (!entity.value) return
-    const title = await openRenameDialog(entity.value.name)
-    if (title === undefined) return
-    await renameEntity(worldId.value, entity.value.id, title)
-    await refreshEntity()
-    await refreshNavItems?.()
   }
 
   let articleSaveTimeout: ReturnType<typeof setTimeout> | undefined

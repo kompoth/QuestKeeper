@@ -34,6 +34,7 @@
           <v-list-item
             v-for="action in item.actions"
             :key="action.title"
+            :class="action.color ? `text-${action.color}` : undefined"
             :prepend-icon="action.icon"
             :title="action.title"
             @click="action.onClick"

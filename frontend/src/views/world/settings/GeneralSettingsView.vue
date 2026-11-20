@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid>
+  <v-container>
     <h1 class="text-h5 mb-4">General</h1>
 
     <v-alert

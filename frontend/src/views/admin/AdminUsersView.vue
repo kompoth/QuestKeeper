@@ -25,6 +25,10 @@
     :search="search"
     @update:options="handleOptionsUpdate"
   >
+    <template #item.user="{ item }">
+      <MemberItem :user="item" />
+    </template>
+
     <template #item.role="{ item }">
       <v-select
         density="compact"
@@ -98,6 +102,7 @@
   import { computed, ref } from 'vue'
   import { changeUserRole, changeUserStatus, createUser, listUsers, triggerPasswordReset } from '@/api/admin'
   import { ApiError } from '@/api/client'
+  import MemberItem from '@/components/MemberItem.vue'
   import { useAuth } from '@/composables/useAuth'
 
   const { currentUser } = useAuth()
@@ -105,9 +110,8 @@
   const pageSize = 20
 
   const headers = [
-    { title: 'Name', key: 'name' },
+    { title: 'User', key: 'user', sortable: false },
     { title: 'Joined', key: 'joinedAt' },
-    { title: 'Email', key: 'email' },
     { title: 'Role', key: 'role' },
     { title: 'Status', key: 'status', sortable: false },
     { title: 'Actions', key: 'actions', sortable: false },

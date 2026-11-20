@@ -30,33 +30,41 @@
 
       <div class="d-flex align-center ga-0 px-3 py-2">
         <div class="d-flex align-center ga-3" style="min-width: 0;">
-          <v-avatar color="surface-variant" size="32" />
-
-          <div style="min-width: 0;">
-            <div class="text-body-2 text-truncate" :title="currentUser?.name">{{ currentUser?.name }}</div>
-
-            <div
-              v-if="currentUser?.role"
-              class="text-caption text-medium-emphasis text-truncate"
-              :title="currentUser.role"
-            >{{ currentUser.role }}</div>
-          </div>
+          <MemberItem
+            v-if="currentUser"
+            class="px-0"
+            density="compact"
+            style="min-width: 0;"
+            :user="currentUser"
+          />
         </div>
 
         <slot name="bottom-actions" />
 
         <v-spacer />
 
-        <v-btn
-          v-if="currentUser?.role === 'admin'"
-          aria-label="Admin settings"
-          icon="mdi-wizard-hat"
-          to="/admin"
-          variant="text"
-        />
+        <v-menu>
+          <template #activator="{ props: menuProps }">
+            <v-btn icon="mdi-dots-vertical" variant="text" v-bind="menuProps" />
+          </template>
 
-        <ThemeToggle />
-        <v-btn aria-label="Log out" icon="mdi-logout" variant="text" @click="emit('logout')" />
+          <v-list density="compact">
+            <v-list-item
+              v-if="currentUser?.role === 'admin'"
+              prepend-icon="mdi-wizard-hat"
+              title="Admin panel"
+              to="/admin"
+            />
+
+            <v-list-item
+              :prepend-icon="theme.global.current.value.dark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+              :title="theme.global.current.value.dark ? 'Light mode' : 'Dark mode'"
+              @click="toggle"
+            />
+
+            <v-list-item prepend-icon="mdi-logout" title="Log out" @click="emit('logout')" />
+          </v-list>
+        </v-menu>
       </div>
     </template>
   </v-navigation-drawer>
@@ -76,7 +84,9 @@
   import { useRoute } from 'vue-router'
   import { useDisplay } from 'vuetify'
   import { useAuth } from '@/composables/useAuth'
+  import { useThemeMode } from '@/composables/useThemeMode'
   import Logo from './Logo.vue'
+  import MemberItem from './MemberItem.vue'
   import ThemeToggle from './ThemeToggle.vue'
 
   defineProps<{
@@ -89,6 +99,7 @@
   }>()
 
   const { currentUser } = useAuth()
+  const { theme, toggle } = useThemeMode()
 
   const route = useRoute()
 

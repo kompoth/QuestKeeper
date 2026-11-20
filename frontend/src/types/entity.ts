@@ -31,5 +31,6 @@ export interface Entity {
   updatedAt: string | null
   createdBy: string | null
   updatedBy: string | null
+  deletedAt: string | null
   access: EntityAccess
 }

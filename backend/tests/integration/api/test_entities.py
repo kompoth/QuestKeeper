@@ -66,7 +66,7 @@ async def test_list_entities_reports_read_only_access_for_a_read_grantee(async_c
     await db_session.commit()
     await async_client.post(
         f"/worlds/{world_id}/permissions",
-        json={"user_id": "grantee", "entity_id": entity_id, "level": "read"},
+        json={"grantee_email": "grantee@example.com", "entity_id": entity_id, "level": "read"},
         headers=_csrf_headers(async_client),
     )
 
@@ -116,7 +116,9 @@ async def test_rename_entity_succeeds_for_the_owner(async_client, db_session):
     assert response.json()["name"] == "Renamed"
 
 
-async def test_delete_entity_removes_it(async_client, db_session):
+async def test_delete_entity_soft_deletes_it(async_client, db_session):
+    """Excluded from the live list, but a direct GET still returns it (read-only, flagged deleted_at) -
+    trashed entities stay viewable for anyone who could already read them."""
     await _login(async_client, db_session)
     world_id = await _create_world(async_client)
     create_response = await async_client.post(
@@ -129,8 +131,12 @@ async def test_delete_entity_removes_it(async_client, db_session):
     )
     assert response.status_code == 204
 
+    list_response = await async_client.get(f"/worlds/{world_id}/entities")
+    assert entity_id not in [entity["id"] for entity in list_response.json()]
+
     get_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}")
-    assert get_response.status_code == 404
+    assert get_response.status_code == 200
+    assert get_response.json()["deleted_at"] is not None
 
 
 async def test_set_and_clear_article(async_client, db_session):
@@ -196,3 +202,102 @@ async def test_create_root_entity_requires_world_ownership(async_client, db_sess
     )
 
     assert response.status_code == 403
+
+
+async def test_trash_lists_deleted_entities(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id = await _create_world(async_client)
+    create_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Root"}, headers=_csrf_headers(async_client)
+    )
+    entity_id = create_response.json()["id"]
+    await async_client.delete(f"/worlds/{world_id}/entities/{entity_id}", headers=_csrf_headers(async_client))
+
+    trash_response = await async_client.get(f"/worlds/{world_id}/entities/trash")
+
+    assert trash_response.status_code == 200
+    assert [entity["id"] for entity in trash_response.json()] == [entity_id]
+
+
+async def test_restore_also_restores_a_still_trashed_parent(async_client, db_session):
+    """Otherwise the child would come back alive but unreachable - its parent still wouldn't list it."""
+    await _login(async_client, db_session)
+    world_id = await _create_world(async_client)
+    parent_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Parent"}, headers=_csrf_headers(async_client)
+    )
+    parent_id = parent_response.json()["id"]
+    child_response = await async_client.post(
+        f"/worlds/{world_id}/entities",
+        json={"name": "Child", "parent_id": parent_id},
+        headers=_csrf_headers(async_client),
+    )
+    child_id = child_response.json()["id"]
+    await async_client.delete(f"/worlds/{world_id}/entities/{parent_id}", headers=_csrf_headers(async_client))
+
+    restore_response = await async_client.post(
+        f"/worlds/{world_id}/entities/{child_id}/restore", headers=_csrf_headers(async_client)
+    )
+    assert restore_response.status_code == 200
+
+    live_ids = {entity["id"] for entity in (await async_client.get(f"/worlds/{world_id}/entities")).json()}
+    assert child_id in live_ids
+    assert parent_id in live_ids
+
+
+async def test_restore_branch_restores_descendants(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id = await _create_world(async_client)
+    parent_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Parent"}, headers=_csrf_headers(async_client)
+    )
+    parent_id = parent_response.json()["id"]
+    child_response = await async_client.post(
+        f"/worlds/{world_id}/entities",
+        json={"name": "Child", "parent_id": parent_id},
+        headers=_csrf_headers(async_client),
+    )
+    child_id = child_response.json()["id"]
+    await async_client.delete(f"/worlds/{world_id}/entities/{parent_id}", headers=_csrf_headers(async_client))
+
+    restore_response = await async_client.post(
+        f"/worlds/{world_id}/entities/{parent_id}/restore-branch", headers=_csrf_headers(async_client)
+    )
+    assert restore_response.status_code == 200
+
+    live_ids = {entity["id"] for entity in (await async_client.get(f"/worlds/{world_id}/entities")).json()}
+    assert parent_id in live_ids
+    assert child_id in live_ids
+
+
+async def test_purge_permanently_removes_the_entity(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id = await _create_world(async_client)
+    create_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Root"}, headers=_csrf_headers(async_client)
+    )
+    entity_id = create_response.json()["id"]
+    await async_client.delete(f"/worlds/{world_id}/entities/{entity_id}", headers=_csrf_headers(async_client))
+
+    purge_response = await async_client.delete(
+        f"/worlds/{world_id}/entities/{entity_id}/purge", headers=_csrf_headers(async_client)
+    )
+    assert purge_response.status_code == 204
+
+    assert (await async_client.get(f"/worlds/{world_id}/entities/{entity_id}")).status_code == 404
+    assert (await async_client.get(f"/worlds/{world_id}/entities/trash")).json() == []
+
+
+async def test_restore_raises_conflict_when_entity_is_not_in_trash(async_client, db_session):
+    await _login(async_client, db_session)
+    world_id = await _create_world(async_client)
+    create_response = await async_client.post(
+        f"/worlds/{world_id}/entities", json={"name": "Root"}, headers=_csrf_headers(async_client)
+    )
+    entity_id = create_response.json()["id"]
+
+    response = await async_client.post(
+        f"/worlds/{world_id}/entities/{entity_id}/restore", headers=_csrf_headers(async_client)
+    )
+
+    assert response.status_code == 409

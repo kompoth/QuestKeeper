@@ -82,3 +82,4 @@ Commands (run from `frontend/`):
 
 - ESLint config extends `eslint-config-vuetify` (`eslint.config.js`); flat config format.
 - Use `<script lang="ts" setup>` composition API throughout; prefer the same for new components.
+- Don't run a Playwright browser verification pass on a change unless explicitly asked — it's slow; lint/type-check/build is the default bar for "done".

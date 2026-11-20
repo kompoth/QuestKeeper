@@ -502,6 +502,145 @@ class TestSqlEntityRepository:
         assert entity is not None
         assert entity.children == ["child-b"]
 
+    async def test_list_trash_returns_only_deleted_entities(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        alive = make_entity("alive", world_id="w1")
+        deleted = make_entity("deleted", world_id="w1")
+        deleted.deleted_at = datetime.now(UTC)
+        db_session.add(alive)
+        db_session.add(deleted)
+        await db_session.commit()
+
+        trash = await SqlEntityRepository(db_session).list_trash("w1")
+
+        assert [entity.id for entity in trash] == ["deleted"]
+
+    async def test_restore_also_restores_still_trashed_ancestors(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        parent = make_entity("parent", world_id="w1")
+        parent.deleted_at = datetime.now(UTC)
+        child = make_entity("child", world_id="w1", parent_id="parent")
+        child.deleted_at = datetime.now(UTC)
+        db_session.add(parent)
+        db_session.add(child)
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).restore("w1", "child", "u1")
+        await db_session.commit()
+
+        assert await SqlEntityRepository(db_session).get("w1", "child") is not None
+        assert await SqlEntityRepository(db_session).get("w1", "parent") is not None
+
+    async def test_restore_stops_at_first_alive_ancestor(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        grandparent = make_entity("grandparent", world_id="w1")
+        parent = make_entity("parent", world_id="w1", parent_id="grandparent")
+        parent.deleted_at = datetime.now(UTC)
+        child = make_entity("child", world_id="w1", parent_id="parent")
+        child.deleted_at = datetime.now(UTC)
+        db_session.add(grandparent)
+        db_session.add(parent)
+        db_session.add(child)
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).restore("w1", "child", "u1")
+        await db_session.commit()
+
+        row = await db_session.get(EntityRow, "grandparent")
+        assert row.updated_by == "u1"  # unchanged from make_entity()'s creator - never touched
+
+    async def test_restore_does_not_restore_descendants(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        parent = make_entity("parent", world_id="w1")
+        parent.deleted_at = datetime.now(UTC)
+        child = make_entity("child", world_id="w1", parent_id="parent")
+        child.deleted_at = datetime.now(UTC)
+        db_session.add(parent)
+        db_session.add(child)
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).restore("w1", "parent", "u1")
+        await db_session.commit()
+
+        assert await SqlEntityRepository(db_session).get("w1", "parent") is not None
+        assert await SqlEntityRepository(db_session).get("w1", "child") is None
+
+    async def test_restore_branch_restores_descendants_and_ancestors(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        parent = make_entity("parent", world_id="w1")
+        parent.deleted_at = datetime.now(UTC)
+        entity = make_entity("entity", world_id="w1", parent_id="parent")
+        entity.deleted_at = datetime.now(UTC)
+        child = make_entity("child", world_id="w1", parent_id="entity")
+        child.deleted_at = datetime.now(UTC)
+        db_session.add(parent)
+        db_session.add(entity)
+        db_session.add(child)
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).restore_branch("w1", "entity", "u1")
+        await db_session.commit()
+
+        assert await SqlEntityRepository(db_session).get("w1", "parent") is not None
+        assert await SqlEntityRepository(db_session).get("w1", "entity") is not None
+        assert await SqlEntityRepository(db_session).get("w1", "child") is not None
+
+    async def test_purge_permanently_removes_entity_and_descendants(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        entity = make_entity("entity", world_id="w1")
+        entity.deleted_at = datetime.now(UTC)
+        child = make_entity("child", world_id="w1", parent_id="entity")
+        child.deleted_at = datetime.now(UTC)
+        db_session.add(entity)
+        db_session.add(child)
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).purge("w1", "entity")
+        await db_session.commit()
+
+        assert await db_session.get(EntityRow, "entity") is None
+        assert await db_session.get(EntityRow, "child") is None
+
+    async def test_purge_removes_article_map_pins_and_permissions(self, db_session):
+        db_session.add(make_user("u1"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        entity = make_entity("entity", world_id="w1")
+        entity.deleted_at = datetime.now(UTC)
+        db_session.add(entity)
+        await db_session.commit()
+        db_session.add(ArticleRow(entity_id="entity", markdown="# Hi"))
+        db_session.add(MapRow(entity_id="entity", pic="map.png"))
+        db_session.add(MapPinRow(map_entity_id="entity", x=1, y=2, pinned_entity_id="entity"))
+        db_session.add(EntityPermissionRow(user_id="u1", entity_id="entity", level=PermissionLevel.WRITE))
+        await db_session.commit()
+
+        await SqlEntityRepository(db_session).purge("w1", "entity")
+        await db_session.commit()
+
+        assert await db_session.get(ArticleRow, "entity") is None
+        assert await db_session.get(MapRow, "entity") is None
+        assert await db_session.get(EntityPermissionRow, ("u1", "entity")) is None
+
     async def test_set_article_creates_article_when_none_exists(self, db_session):
         db_session.add(make_user("u1"))
         await db_session.commit()
@@ -835,6 +974,27 @@ class TestSqlEntityPermissionRepository:
         grants = await SqlEntityPermissionRepository(db_session).get_grants("w1", "u1")
 
         assert grants == {"e1": PermissionLevel.READ}
+
+    async def test_get_grants_for_entity_returns_every_grant_on_that_entity(self, db_session):
+        db_session.add(make_user("u1"))
+        db_session.add(make_user("u2"))
+        await db_session.commit()
+        db_session.add(make_world("w1", "u1"))
+        await db_session.commit()
+        db_session.add(make_entity("e1", world_id="w1"))
+        db_session.add(make_entity("e2", world_id="w1"))
+        await db_session.commit()
+        db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.READ))
+        db_session.add(EntityPermissionRow(user_id="u2", entity_id="e1", level=PermissionLevel.WRITE))
+        db_session.add(EntityPermissionRow(user_id="u1", entity_id="e2", level=PermissionLevel.WRITE))
+        await db_session.commit()
+
+        grants = await SqlEntityPermissionRepository(db_session).get_grants_for_entity("e1")
+
+        assert {(grant.user_id, grant.level) for grant in grants} == {
+            ("u1", PermissionLevel.READ),
+            ("u2", PermissionLevel.WRITE),
+        }
 
     async def test_grant_creates_a_new_grant(self, db_session):
         db_session.add(make_user("u1"))

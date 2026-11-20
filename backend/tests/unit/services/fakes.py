@@ -8,6 +8,7 @@ from app.domain.models import (
     Article,
     Entity,
     EntityId,
+    EntityPermission,
     Map,
     PasswordReset,
     PermissionLevel,
@@ -122,17 +123,56 @@ class FakeEntityRepository:
     collide_next_creates: int = 0
     """Forces the next N create() calls to raise IdCollisionError, regardless of id - for retry tests."""
 
-    async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
+    async def get(self, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False) -> Entity | None:
         entity = self.entities_by_id.get(entity_id)
         if entity is None or entity.world_id != world_id:
+            return None
+        if not include_deleted and entity.deleted_at is not None:
             return None
         return entity
 
     async def list_for_world(self, world_id: WorldId) -> Sequence[Entity]:
-        return [entity for entity in self.entities_by_id.values() if entity.world_id == world_id]
+        return [
+            entity
+            for entity in self.entities_by_id.values()
+            if entity.world_id == world_id and entity.deleted_at is None
+        ]
+
+    async def list_trash(self, world_id: WorldId) -> Sequence[Entity]:
+        return [
+            entity
+            for entity in self.entities_by_id.values()
+            if entity.world_id == world_id and entity.deleted_at is not None
+        ]
 
     async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:  # noqa: ARG002
         return self.ancestor_ids_by_entity.get(entity_id, [])
+
+    def _subtree_ids(self, entity_id: EntityId) -> set[EntityId]:
+        subtree_ids = {entity_id}
+        frontier = [entity_id]
+        while frontier:
+            frontier = [
+                entity.id
+                for entity in self.entities_by_id.values()
+                if entity.parent in frontier and entity.id not in subtree_ids
+            ]
+            subtree_ids.update(frontier)
+        return subtree_ids
+
+    def _still_trashed_ancestor_ids(self, entity_id: EntityId) -> list[EntityId]:
+        """`entity_id`'s ancestor ids that are still tombstoned, closest-first, stopping at the first
+        ancestor that's already alive (or at the root) - walked via `.parent`, not the separately
+        injected `ancestor_ids_by_entity` fixture (which `get_ancestor_ids` uses instead)."""
+        still_trashed: list[EntityId] = []
+        current = self.entities_by_id.get(entity_id)
+        while current is not None and current.parent is not None:
+            parent = self.entities_by_id.get(current.parent)
+            if parent is None or parent.deleted_at is None:
+                break
+            still_trashed.append(parent.id)
+            current = parent
+        return still_trashed
 
     async def create(
         self, world_id: WorldId, entity_id: EntityId, name: str, parent_id: EntityId | None, actor_id: UserId
@@ -158,7 +198,22 @@ class FakeEntityRepository:
         self._update(entity_id, actor_id, name=name)
 
     async def delete(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:  # noqa: ARG002
-        self.entities_by_id.pop(entity_id, None)
+        now = datetime.now(UTC)
+        for subtree_id in self._subtree_ids(entity_id):
+            self._update(subtree_id, actor_id, deleted_at=now)
+
+    async def restore(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:  # noqa: ARG002
+        for id_to_restore in [entity_id, *self._still_trashed_ancestor_ids(entity_id)]:
+            self._update(id_to_restore, actor_id, deleted_at=None)
+
+    async def restore_branch(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:  # noqa: ARG002
+        ids_to_restore = self._subtree_ids(entity_id) | set(self._still_trashed_ancestor_ids(entity_id))
+        for id_to_restore in ids_to_restore:
+            self._update(id_to_restore, actor_id, deleted_at=None)
+
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:  # noqa: ARG002
+        for subtree_id in self._subtree_ids(entity_id):
+            self.entities_by_id.pop(subtree_id, None)
 
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:
         self._update(entity_id, actor_id, article=article)
@@ -185,6 +240,13 @@ class FakeEntityPermissionRepository:
 
     async def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:  # noqa: ARG002
         return self.grants_by_user.get(user_id, {})
+
+    async def get_grants_for_entity(self, entity_id: EntityId) -> Sequence[EntityPermission]:
+        return [
+            EntityPermission(user_id=user_id, entity_id=entity_id, level=grants[entity_id])
+            for user_id, grants in self.grants_by_user.items()
+            if entity_id in grants
+        ]
 
     async def grant(self, user_id: UserId, entity_id: EntityId, level: PermissionLevel) -> None:
         grants = dict(self.grants_by_user.get(user_id, {}))

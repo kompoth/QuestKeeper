@@ -1,13 +1,22 @@
 import pytest
 
-from app.domain.models import Entity, EntityPermission, PermissionLevel, User, UserRole, UserStatus, World, WorldInvite
+from app.domain.models import Entity, PermissionLevel, User, UserRole, UserStatus, World, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.access import EntityNotFoundError, InviteNotFoundError, PermissionDeniedError, WorldNotFoundError
+from app.services.access import (
+    EntityNotFoundError,
+    InviteNotFoundError,
+    PermissionDeniedError,
+    UserNotFoundError,
+    WorldNotFoundError,
+)
 from app.services.sharing import (
+    EntityGrant,
+    InheritedEntityGrant,
     accept_invite,
     accept_invite_for_world,
     create_invite,
     expel_invitee,
+    get_entity_permissions,
     grant_permission,
     list_invites_for_world,
     list_pending_invites,
@@ -34,11 +43,16 @@ ENTITY_ID = "e1"
 FRONTEND_ORIGIN = "http://localhost:5173"
 
 
-def make_repos(*, world=None, entity=None, users=None, invites=None, permissions=None) -> Repositories:
+def make_repos(
+    *, world=None, entity=None, entities=None, ancestor_ids=None, users=None, invites=None, permissions=None
+) -> Repositories:
+    entities_by_id = dict(entities) if entities else {}
+    if entity:
+        entities_by_id[entity.id] = entity
     return Repositories(
         users=FakeUserRepository(users_by_id=users or {}),
         worlds=FakeWorldRepository(worlds_by_id={world.id: world} if world else {}),
-        entities=FakeEntityRepository(entities_by_id={entity.id: entity} if entity else {}),
+        entities=FakeEntityRepository(entities_by_id=entities_by_id, ancestor_ids_by_entity=ancestor_ids or {}),
         permissions=permissions if permissions is not None else FakeEntityPermissionRepository(),
         invites=invites if invites is not None else FakeWorldInviteRepository(),
         sessions=FakeSessionRepository(),
@@ -55,10 +69,10 @@ def make_invitee(email="grantee@example.com") -> User:
 async def test_grant_permission_succeeds_for_world_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
-    repos = make_repos(world=world, entity=entity)
-    grant = EntityPermission(user_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.WRITE)
+    grantee = make_invitee()
+    repos = make_repos(world=world, entity=entity, users={GRANTEE_ID: grantee})
 
-    await grant_permission(repos, OWNER_ID, WORLD_ID, grant)
+    await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, grantee.email, PermissionLevel.WRITE)
 
     grants = await repos.permissions.get_grants(WORLD_ID, GRANTEE_ID)
     assert grants == {ENTITY_ID: PermissionLevel.WRITE}
@@ -66,28 +80,34 @@ async def test_grant_permission_succeeds_for_world_owner():
 
 async def test_grant_permission_raises_when_world_not_found():
     repos = make_repos()
-    grant = EntityPermission(user_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.WRITE)
 
     with pytest.raises(WorldNotFoundError):
-        await grant_permission(repos, OWNER_ID, WORLD_ID, grant)
+        await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, "grantee@example.com", PermissionLevel.WRITE)
 
 
 async def test_grant_permission_raises_when_caller_is_not_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     repos = make_repos(world=world)
-    grant = EntityPermission(user_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.WRITE)
 
     with pytest.raises(PermissionDeniedError):
-        await grant_permission(repos, OTHER_USER_ID, WORLD_ID, grant)
+        await grant_permission(repos, OTHER_USER_ID, WORLD_ID, ENTITY_ID, "grantee@example.com", PermissionLevel.WRITE)
 
 
 async def test_grant_permission_raises_when_entity_not_found():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     repos = make_repos(world=world)
-    grant = EntityPermission(user_id=GRANTEE_ID, entity_id=ENTITY_ID, level=PermissionLevel.WRITE)
 
     with pytest.raises(EntityNotFoundError):
-        await grant_permission(repos, OWNER_ID, WORLD_ID, grant)
+        await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, "grantee@example.com", PermissionLevel.WRITE)
+
+
+async def test_grant_permission_raises_when_grantee_email_unknown():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    repos = make_repos(world=world, entity=entity)
+
+    with pytest.raises(UserNotFoundError):
+        await grant_permission(repos, OWNER_ID, WORLD_ID, ENTITY_ID, "nobody@example.com", PermissionLevel.WRITE)
 
 
 async def test_revoke_permission_succeeds_for_world_owner():
@@ -107,6 +127,99 @@ async def test_revoke_permission_raises_when_caller_is_not_owner():
 
     with pytest.raises(PermissionDeniedError):
         await revoke_permission(repos, OTHER_USER_ID, WORLD_ID, GRANTEE_ID, ENTITY_ID)
+
+
+async def test_get_entity_permissions_returns_direct_grant():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    grantee = make_invitee()
+    repos = make_repos(world=world, entity=entity, users={GRANTEE_ID: grantee})
+    await repos.permissions.grant(GRANTEE_ID, ENTITY_ID, PermissionLevel.WRITE)
+
+    view = await get_entity_permissions(repos, OWNER_ID, WORLD_ID, ENTITY_ID)
+
+    assert view.direct == [EntityGrant(user=grantee, level=PermissionLevel.WRITE, invite_accepted=None)]
+    assert view.inherited == []
+
+
+async def test_get_entity_permissions_reports_the_grantees_invite_acceptance_for_this_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    grantee = make_invitee()
+    invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, accepted=False)
+    repos = make_repos(
+        world=world, entity=entity, users={GRANTEE_ID: grantee}, invites=FakeWorldInviteRepository(invites=[invite])
+    )
+    await repos.permissions.grant(GRANTEE_ID, ENTITY_ID, PermissionLevel.WRITE)
+
+    view = await get_entity_permissions(repos, OWNER_ID, WORLD_ID, ENTITY_ID)
+
+    assert view.direct == [EntityGrant(user=grantee, level=PermissionLevel.WRITE, invite_accepted=False)]
+
+
+async def test_get_entity_permissions_returns_inherited_grant_from_closest_ancestor():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    parent = Entity(id="parent", world_id=WORLD_ID, name="Parent")
+    child = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Child", parent="parent")
+    grandparent_grantee = make_invitee(email="grandparent-grant@example.com")
+    parent_grantee = User(
+        id="parent-grantee",
+        name="Parent Grantee",
+        email="parent-grant@example.com",
+        hashed_password="x",
+        role=UserRole.MEMBER,
+    )
+    repos = make_repos(
+        world=world,
+        entities={parent.id: parent, child.id: child},
+        ancestor_ids={ENTITY_ID: ["parent", "grandparent"]},
+        users={GRANTEE_ID: grandparent_grantee, "parent-grantee": parent_grantee},
+    )
+    await repos.permissions.grant("parent-grantee", "parent", PermissionLevel.READ)
+    await repos.permissions.grant(GRANTEE_ID, "grandparent", PermissionLevel.WRITE)
+
+    view = await get_entity_permissions(repos, OWNER_ID, WORLD_ID, ENTITY_ID)
+
+    assert view.direct == []
+    assert view.inherited == [
+        InheritedEntityGrant(
+            user=parent_grantee, level=PermissionLevel.READ, invite_accepted=None, from_entity_id="parent"
+        ),
+        InheritedEntityGrant(
+            user=grandparent_grantee, level=PermissionLevel.WRITE, invite_accepted=None, from_entity_id="grandparent"
+        ),
+    ]
+
+
+async def test_get_entity_permissions_omits_inherited_grant_overridden_by_direct_grant():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    child = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Child", parent="parent")
+    grantee = make_invitee()
+    repos = make_repos(world=world, entity=child, ancestor_ids={ENTITY_ID: ["parent"]}, users={GRANTEE_ID: grantee})
+    await repos.permissions.grant(GRANTEE_ID, "parent", PermissionLevel.READ)
+    await repos.permissions.grant(GRANTEE_ID, ENTITY_ID, PermissionLevel.WRITE)
+
+    view = await get_entity_permissions(repos, OWNER_ID, WORLD_ID, ENTITY_ID)
+
+    assert view.direct == [EntityGrant(user=grantee, level=PermissionLevel.WRITE, invite_accepted=None)]
+    assert view.inherited == []
+
+
+async def test_get_entity_permissions_raises_when_caller_is_not_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    repos = make_repos(world=world, entity=entity)
+
+    with pytest.raises(PermissionDeniedError):
+        await get_entity_permissions(repos, OTHER_USER_ID, WORLD_ID, ENTITY_ID)
+
+
+async def test_get_entity_permissions_raises_when_entity_not_found():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(EntityNotFoundError):
+        await get_entity_permissions(repos, OWNER_ID, WORLD_ID, ENTITY_ID)
 
 
 async def test_create_invite_succeeds_for_world_owner_and_sends_no_mail_for_an_existing_user():

@@ -8,6 +8,7 @@ from app.domain.models import (
     Article,
     Entity,
     EntityId,
+    EntityPermission,
     Map,
     PasswordReset,
     PermissionLevel,
@@ -92,16 +93,24 @@ class WorldRepository(Protocol):
 
 
 class EntityRepository(Protocol):
-    async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
-        """The entity, or None if it doesn't exist, belongs to a different world, or is soft-deleted."""
+    async def get(self, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False) -> Entity | None:
+        """The entity, or None if it doesn't exist or belongs to a different world.
+
+        Excludes soft-deleted entities unless `include_deleted` is set.
+        """
         ...
 
     async def list_for_world(self, world_id: WorldId) -> Sequence[Entity]:
         """Every non-deleted entity in the world, unfiltered by permission grants."""
         ...
 
+    async def list_trash(self, world_id: WorldId) -> Sequence[Entity]:
+        """Every soft-deleted entity in the world; each entity's `children` only lists its still-deleted
+        children, so a restored child simply disappears from its tombstoned parent's branch."""
+        ...
+
     async def get_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
-        """Ids from the entity's parent up to the root, in that order."""
+        """Ids from the entity's parent up to the root, in that order. Walks through deleted ancestors too."""
         ...
 
     async def create(
@@ -117,6 +126,21 @@ class EntityRepository(Protocol):
 
     async def delete(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
         """Soft-deletes the entity and its entire descendant subtree (tombstone, not a hard delete)."""
+        ...
+
+    async def restore(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
+        """Restores this entity and any still-tombstoned ancestors needed to make it reachable again in
+        the live tree. Still-tombstoned descendants are left in trash."""
+        ...
+
+    async def restore_branch(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
+        """Restores this entity, every still-tombstoned entity in its descendant subtree, and any
+        still-tombstoned ancestors needed to make it reachable again in the live tree."""
+        ...
+
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:
+        """Permanently deletes the entity and its entire descendant subtree (tombstoned or not), along
+        with their article/map facets, map pins, and permission grants."""
         ...
 
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:
@@ -135,6 +159,10 @@ class EntityRepository(Protocol):
 class EntityPermissionRepository(Protocol):
     async def get_grants(self, world_id: WorldId, user_id: UserId) -> Mapping[EntityId, PermissionLevel]:
         """A user's entity_id -> level grants within one world."""
+        ...
+
+    async def get_grants_for_entity(self, entity_id: EntityId) -> Sequence[EntityPermission]:
+        """Every grant made directly on one entity (not its ancestors)."""
         ...
 
     async def grant(self, user_id: UserId, entity_id: EntityId, level: PermissionLevel) -> None:

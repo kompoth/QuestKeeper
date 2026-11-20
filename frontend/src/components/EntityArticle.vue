@@ -1,10 +1,11 @@
 <template>
-  <div ref="rootRef" />
+  <div ref="rootRef" :class="{ 'article-mobile': mobile }" />
 </template>
 
 <script lang="ts" setup>
   import { Crepe } from '@milkdown/crepe'
   import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import { useDisplay } from 'vuetify'
   import '@milkdown/crepe/theme/common/style.css'
   import '@milkdown/crepe/theme/frame.css'
 
@@ -20,18 +21,28 @@
   }>()
 
   const rootRef = ref<HTMLElement>()
+  const { mobile } = useDisplay()
   let crepe: Crepe | undefined
 
-  onMounted(async () => {
+  function featuresFor (isMobile: boolean) {
+    return {
+      [Crepe.Feature.Latex]: false,
+      [Crepe.Feature.CodeMirror]: false,
+      // The drag-handle/block menu and floating toolbar don't suit touch input - a persistent top bar
+      // covers the same formatting actions without needing a hover or a text selection to appear.
+      ...isMobile
+        ? { [Crepe.Feature.BlockEdit]: false, [Crepe.Feature.Toolbar]: false, [Crepe.Feature.TopBar]: true }
+        : {},
+    }
+  }
+
+  async function createEditor (defaultValue: string) {
     if (!rootRef.value) return
 
     crepe = new Crepe({
       root: rootRef.value,
-      defaultValue: props.modelValue,
-      features: {
-        [Crepe.Feature.Latex]: false,
-        [Crepe.Feature.CodeMirror]: false,
-      },
+      defaultValue,
+      features: featuresFor(mobile.value),
     })
 
     crepe.on(listener => {
@@ -42,6 +53,17 @@
 
     await crepe.create()
     crepe.setReadonly(!props.editable)
+  }
+
+  onMounted(() => createEditor(props.modelValue))
+
+  // Crepe's feature set is constructor-only (no runtime toggle), so crossing the mobile breakpoint
+  // needs a full rebuild - re-seeded from the live editor content, not the (possibly stale, debounced)
+  // modelValue prop, so nothing typed since the last autosave is lost.
+  watch(mobile, async () => {
+    const markdown = crepe?.getMarkdown() ?? props.modelValue
+    crepe?.destroy()
+    await createEditor(markdown)
   })
 
   watch(() => props.editable, editable => {
@@ -81,5 +103,10 @@
   --crepe-color-hover: rgba(var(--v-theme-on-surface), var(--v-hover-opacity));
   --crepe-color-selected: rgba(var(--v-theme-primary), 0.5);
   --crepe-color-inline-area: rgb(var(--v-theme-surface-light));
+}
+
+/* Crepe's base theme hardcodes 60px/120px regardless of viewport - way too wide a gutter on a phone. */
+.article-mobile .milkdown .ProseMirror {
+  padding: 24px 16px;
 }
 </style>

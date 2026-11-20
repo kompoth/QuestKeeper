@@ -28,6 +28,7 @@ from app.domain.models import (
     Article,
     Entity,
     EntityId,
+    EntityPermission,
     Map,
     MapPin,
     PasswordReset,
@@ -132,6 +133,7 @@ def _entity_from_row(row: EntityRow, children: Sequence[EntityId]) -> Entity:
         updated_at=row.updated_at,
         created_by=row.created_by,
         updated_by=row.updated_by,
+        deleted_at=row.deleted_at,
     )
 
 
@@ -278,7 +280,7 @@ class SqlEntityRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(self, world_id: WorldId, entity_id: EntityId) -> Entity | None:
+    async def get(self, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False) -> Entity | None:
         # populate_existing forces a fresh eager-load of article/map every call. Without it, a `get()`
         # for an entity already in this session's identity map (e.g. after a sibling set_article/set_map
         # mutation expired its relationship attributes) falls back to lazy-loading on access in
@@ -289,7 +291,9 @@ class SqlEntityRepository:
             options=[selectinload(EntityRow.article), selectinload(EntityRow.map).selectinload(MapRow.pins)],
             populate_existing=True,
         )
-        if row is None or row.world_id != world_id or row.deleted_at is not None:
+        if row is None or row.world_id != world_id:
+            return None
+        if not include_deleted and row.deleted_at is not None:
             return None
 
         result = await self._session.execute(
@@ -310,6 +314,26 @@ class SqlEntityRepository:
         children_by_parent_id: dict[str, list[str]] = {}
         for row in rows:
             if row.parent_id is not None:
+                children_by_parent_id.setdefault(row.parent_id, []).append(row.id)
+
+        return [_entity_from_row(row, children_by_parent_id.get(row.id, [])) for row in rows]
+
+    async def list_trash(self, world_id: WorldId) -> Sequence[Entity]:
+        result = await self._session.execute(
+            select(EntityRow)
+            .where(EntityRow.world_id == world_id, EntityRow.deleted_at.is_not(None))
+            .options(selectinload(EntityRow.article), selectinload(EntityRow.map).selectinload(MapRow.pins))
+            .execution_options(populate_existing=True)
+            .order_by(EntityRow.deleted_at.desc())
+        )
+        rows = result.scalars().all()
+        deleted_ids = {row.id for row in rows}
+
+        # Only nests a child under its tombstoned parent - a parent whose child was independently
+        # restored simply stops listing it, since that child no longer appears in `rows` at all.
+        children_by_parent_id: dict[str, list[str]] = {}
+        for row in rows:
+            if row.parent_id is not None and row.parent_id in deleted_ids:
                 children_by_parent_id.setdefault(row.parent_id, []).append(row.id)
 
         return [_entity_from_row(row, children_by_parent_id.get(row.id, [])) for row in rows]
@@ -373,6 +397,86 @@ class SqlEntityRepository:
             .values(deleted_at=now, updated_at=now, updated_by=actor_id)
         )
 
+    async def _still_trashed_ancestor_ids(self, world_id: WorldId, entity_id: EntityId) -> list[EntityId]:
+        """`entity_id`'s ancestor ids that are still tombstoned, closest-first, stopping at the first
+        ancestor that's already alive (or at the root) - restoring past that point isn't needed, since an
+        alive ancestor means the chain above it is already reachable."""
+        ancestor_ids = await self.get_ancestor_ids(world_id, entity_id)
+        if not ancestor_ids:
+            return []
+
+        result = await self._session.execute(
+            select(EntityRow.id, EntityRow.deleted_at).where(EntityRow.id.in_(ancestor_ids))
+        )
+        deleted_by_id = {row.id: row.deleted_at is not None for row in result}
+
+        still_trashed: list[EntityId] = []
+        for ancestor_id in ancestor_ids:
+            if not deleted_by_id.get(ancestor_id, False):
+                break
+            still_trashed.append(ancestor_id)
+        return still_trashed
+
+    async def restore(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
+        """Restores `entity_id` and any still-tombstoned ancestors needed to make it reachable again in
+        the live tree. Still-tombstoned descendants are left in trash."""
+        ids_to_restore = [entity_id, *await self._still_trashed_ancestor_ids(world_id, entity_id)]
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(EntityRow)
+            .where(EntityRow.id.in_(ids_to_restore))
+            .values(deleted_at=None, updated_at=now, updated_by=actor_id)
+        )
+
+    async def restore_branch(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
+        """Restores `entity_id`, every still-tombstoned entity in its descendant subtree, and any
+        still-tombstoned ancestors needed to make it reachable again in the live tree."""
+        subtree_ids = {entity_id}
+        frontier = [entity_id]
+        while frontier:
+            result = await self._session.execute(
+                select(EntityRow.id).where(
+                    EntityRow.parent_id.in_(frontier),
+                    EntityRow.world_id == world_id,
+                    EntityRow.deleted_at.is_not(None),
+                )
+            )
+            frontier = [child_id for child_id in result.scalars() if child_id not in subtree_ids]
+            subtree_ids.update(frontier)
+
+        ids_to_restore = subtree_ids.union(await self._still_trashed_ancestor_ids(world_id, entity_id))
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(EntityRow)
+            .where(EntityRow.id.in_(ids_to_restore))
+            .values(deleted_at=None, updated_at=now, updated_by=actor_id)
+        )
+
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:
+        """Permanently deletes `entity_id` and its entire descendant subtree (tombstoned or not),
+        found the same way `delete()` finds its subtree - ignoring deleted_at, so purging an ancestor
+        always takes its whole branch with it, even a part of it that was separately restored.
+        """
+        subtree_ids = [entity_id]
+        frontier = [entity_id]
+        while frontier:
+            result = await self._session.execute(
+                select(EntityRow.id).where(EntityRow.parent_id.in_(frontier), EntityRow.world_id == world_id)
+            )
+            frontier = [child_id for child_id in result.scalars() if child_id not in subtree_ids]
+            subtree_ids.extend(frontier)
+
+        # Pins can target any entity in the world, not just ones in this subtree's own map(s).
+        await self._session.execute(delete(MapPinRow).where(MapPinRow.pinned_entity_id.in_(subtree_ids)))
+        await self._session.execute(delete(MapPinRow).where(MapPinRow.map_entity_id.in_(subtree_ids)))
+        await self._session.execute(delete(MapRow).where(MapRow.entity_id.in_(subtree_ids)))
+        await self._session.execute(delete(ArticleRow).where(ArticleRow.entity_id.in_(subtree_ids)))
+        await self._session.execute(delete(EntityPermissionRow).where(EntityPermissionRow.entity_id.in_(subtree_ids)))
+        # entities.parent_id self-references entities.id with no ON DELETE cascade, so children must be
+        # deleted before their parent - reversing BFS discovery order guarantees that at any depth.
+        for child_first_id in reversed(subtree_ids):
+            await self._session.execute(delete(EntityRow).where(EntityRow.id == child_first_id))
+
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:
         row = await self._session.get(ArticleRow, entity_id)
         if row is None:
@@ -426,6 +530,14 @@ class SqlEntityPermissionRepository:
             .where(EntityRow.world_id == world_id, EntityPermissionRow.user_id == user_id)
         )
         return {row.entity_id: row.level for row in result.scalars()}
+
+    async def get_grants_for_entity(self, entity_id: EntityId) -> Sequence[EntityPermission]:
+        result = await self._session.execute(
+            select(EntityPermissionRow).where(EntityPermissionRow.entity_id == entity_id)
+        )
+        return [
+            EntityPermission(user_id=row.user_id, entity_id=row.entity_id, level=row.level) for row in result.scalars()
+        ]
 
     async def grant(self, user_id: UserId, entity_id: EntityId, level: PermissionLevel) -> None:
         row = await self._session.get(EntityPermissionRow, (user_id, entity_id))

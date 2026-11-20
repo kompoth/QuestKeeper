@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid>
+  <v-container>
     <h1 class="text-h5 mb-4">Members</h1>
 
     <v-data-table
@@ -8,10 +8,8 @@
       :items="invites"
       :loading="loading"
     >
-      <template #item.accepted="{ item }">
-        <v-chip :color="item.accepted ? 'success' : 'default'" size="small">
-          {{ item.accepted ? 'Accepted' : 'Pending' }}
-        </v-chip>
+      <template #item.member="{ item }">
+        <InviteeItem :invite="item" />
       </template>
 
       <template #item.actions="{ item }">
@@ -62,13 +60,13 @@
   import { useRoute } from 'vue-router'
   import { ApiError } from '@/api/client'
   import { createInvite, expelInvitee, listInvites } from '@/api/invites'
+  import InviteeItem from '@/components/InviteeItem.vue'
 
   const route = useRoute()
   const worldId = route.params.worldId as string
 
   const headers = [
-    { title: 'Email', key: 'inviteeEmail' },
-    { title: 'Status', key: 'accepted', sortable: false },
+    { title: 'Member', key: 'member', sortable: false },
     { title: 'Actions', key: 'actions', sortable: false },
   ]
 

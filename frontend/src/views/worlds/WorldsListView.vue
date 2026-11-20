@@ -3,7 +3,7 @@
 
   <v-row>
     <v-col
-      v-for="world in worlds"
+      v-for="world in sortedWorlds"
       :key="world.id"
       cols="12"
       md="4"
@@ -12,6 +12,16 @@
       <v-card height="220" hover :to="`/w/${world.id}`">
         <v-sheet class="d-flex align-center justify-center" color="surface-variant" height="140">
           <v-icon color="on-surface-variant" icon="mdi-image" size="48" />
+
+          <v-chip
+            class="position-absolute"
+            :color="isOwner(world) ? 'primary' : 'secondary'"
+            size="small"
+            style="top: 8px; left: 8px;"
+            variant="flat"
+          >
+            {{ world.ownerName }}
+          </v-chip>
         </v-sheet>
 
         <v-card-title>{{ world.name }}</v-card-title>
@@ -37,10 +47,22 @@
 
 <script lang="ts" setup>
   import type { World } from '@/types/world'
-  import { onMounted, ref } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { createWorld, listWorlds } from '@/api/worlds'
+  import { useAuth } from '@/composables/useAuth'
+
+  const { currentUser } = useAuth()
 
   const worlds = ref<World[]>([])
+
+  function isOwner (world: World): boolean {
+    return world.ownerId === currentUser.value?.id
+  }
+
+  const sortedWorlds = computed(() => [
+    ...worlds.value.filter(world => isOwner(world)),
+    ...worlds.value.filter(world => !isOwner(world)),
+  ])
 
   let worldsRequestId = 0
 
