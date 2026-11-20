@@ -4,13 +4,6 @@ import pytest
 
 from app.domain.models import Article, Entity, Map, MapPin, PermissionLevel, World
 from app.domain.repositories import Repositories
-from app.services.access import (
-    EntityNotFoundError,
-    EntityNotInTrashError,
-    IdCollisionError,
-    PermissionDeniedError,
-    WorldNotFoundError,
-)
 from app.services.entities import (
     clear_article,
     clear_map,
@@ -26,18 +19,20 @@ from app.services.entities import (
     set_article,
     set_map,
 )
+from app.services.errors import (
+    EntityNotFoundError,
+    EntityNotInTrashError,
+    IdCollisionError,
+    PermissionDeniedError,
+    WorldNotFoundError,
+)
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
     FakeMediaStorage,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
     FakeWorldRepository,
 )
+from tests.unit.services.fakes import make_repos as _make_repos
 
 WORLD_ID = "w1"
 OWNER_ID = "owner"
@@ -59,17 +54,7 @@ def make_repos(
     )
     worlds = FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
     permissions = FakeEntityPermissionRepository(grants_by_user={USER_ID: grants} if grants is not None else {})
-    return Repositories(
-        users=FakeUserRepository(),
-        worlds=worlds,
-        entities=entities,
-        permissions=permissions,
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    return _make_repos(worlds=worlds, entities=entities, permissions=permissions)
 
 
 async def test_list_entities_succeeds_for_world_owner():
@@ -164,6 +149,7 @@ async def test_create_entity_as_root_succeeds_for_world_owner():
 
     entity_id = await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
 
+    assert len(entity_id) == 12
     entity = await repos.entities.get(WORLD_ID, entity_id)
     assert entity is not None
     assert entity.name == "New Entity"
@@ -183,15 +169,6 @@ async def test_create_entity_as_root_raises_when_world_not_found():
 
     with pytest.raises(WorldNotFoundError):
         await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
-
-
-async def test_create_entity_generates_a_short_id():
-    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
-    repos = make_repos(world=world)
-
-    entity_id = await create_entity(repos, USER_ID, WORLD_ID, None, "New Entity")
-
-    assert len(entity_id) == 12
 
 
 async def test_create_entity_retries_once_on_id_collision():

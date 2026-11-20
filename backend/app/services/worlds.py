@@ -7,7 +7,7 @@ from app.domain import permissions
 from app.domain.media import MediaStorage
 from app.domain.models import UserId, World, WorldId
 from app.domain.repositories import Repositories
-from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
+from app.services.errors import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
 from app.services.media import entity_media_prefix
 
 
@@ -47,18 +47,22 @@ async def create_world(
     return world.id
 
 
-async def update_world(repos: Repositories, user_id: UserId, world: World) -> None:
-    """Replaces the name/description/pic of the existing world matching `world.id`.
-
-    `world.owner_id` is ignored; ownership never changes through this call.
-    """
-    existing = await repos.worlds.get(world.id)
+async def update_world(  # noqa: PLR0913, PLR0917 -- name/description/pic are the world's own mutable fields
+    repos: Repositories,
+    user_id: UserId,
+    world_id: WorldId,
+    name: str,
+    description: str | None = None,
+    pic: str | None = None,
+) -> None:
+    """Replaces the name/description/pic of the existing world. Ownership never changes through this call."""
+    existing = await repos.worlds.get(world_id)
     if existing is None:
-        raise WorldNotFoundError(world.id)
+        raise WorldNotFoundError(world_id)
     if not permissions.is_owner(existing, user_id):
-        raise PermissionDeniedError(user_id, world.id)
+        raise PermissionDeniedError(user_id, world_id)
 
-    updated = existing.model_copy(update={"name": world.name, "description": world.description, "pic": world.pic})
+    updated = existing.model_copy(update={"name": name, "description": description, "pic": pic})
     await repos.worlds.update(updated)
 
 

@@ -4,7 +4,7 @@
 
 <script lang="ts" setup>
   import { computed } from 'vue'
-  import rawSvg from '@/assets/logo-transparent.svg?raw'
+  import svg from '@/assets/logo-transparent.svg?raw'
 
   const props = withDefaults(defineProps<{
     size?: number
@@ -12,7 +12,6 @@
     size: 36,
   })
 
-  const svg = rawSvg
   const sizePx = computed(() => `${props.size}px`)
 </script>
 

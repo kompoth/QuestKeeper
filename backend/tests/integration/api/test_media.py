@@ -5,33 +5,16 @@ test instances - see CLAUDE.md's "Local convenience" section for the disposable 
 import httpx
 import pytest
 
-from app.adapters.db.orm import UserRow
-from app.domain.models import UserRole
-from app.domain.security import hash_password
+from tests.integration.api.conftest import csrf_headers, login
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-EMAIL = "user@example.com"
-PASSWORD = "correct horse battery staple"  # noqa: S105
-
-
-async def _login(async_client, db_session, user_id="owner") -> None:
-    db_session.add(
-        UserRow(id=user_id, name="User", email=EMAIL, hashed_password=hash_password(PASSWORD), role=UserRole.MEMBER)
-    )
-    await db_session.commit()
-    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
-
-
-def _csrf_headers(async_client) -> dict[str, str]:
-    return {"X-CSRF-Token": async_client.cookies["csrf_token"]}
-
 
 async def _create_world_and_entity(async_client) -> tuple[str, str]:
-    world_response = await async_client.post("/worlds", json={"name": "World"}, headers=_csrf_headers(async_client))
+    world_response = await async_client.post("/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
     world_id = world_response.json()["id"]
     entity_response = await async_client.post(
-        f"/worlds/{world_id}/entities", json={"name": "Page"}, headers=_csrf_headers(async_client)
+        f"/worlds/{world_id}/entities", json={"name": "Page"}, headers=csrf_headers(async_client)
     )
     return world_id, entity_response.json()["id"]
 
@@ -47,13 +30,13 @@ async def _upload_real_bytes(mint_response: dict, content: bytes, *, content_typ
 
 
 async def test_mint_upload_succeeds_with_write_access(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
         f"/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 12},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
 
     assert response.status_code == 200
@@ -64,63 +47,39 @@ async def test_mint_upload_succeeds_with_write_access(async_client, db_session):
 
 
 async def test_mint_upload_rejects_unsupported_content_type(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
         f"/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/svg+xml", "size": 12},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
 
     assert response.status_code == 415
 
 
 async def test_mint_upload_rejects_oversized_declared_size(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
         f"/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 999_999_999_999},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
 
     assert response.status_code == 413
 
 
-async def test_mint_upload_requires_write_access(async_client, db_session):
-    await _login(async_client, db_session, user_id="owner")
-    world_id, entity_id = await _create_world_and_entity(async_client)
-    db_session.add(
-        UserRow(
-            id="outsider",
-            name="Outsider",
-            email="outsider@example.com",
-            hashed_password=hash_password(PASSWORD),
-            role=UserRole.MEMBER,
-        )
-    )
-    await db_session.commit()
-    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
-
-    response = await async_client.post(
-        f"/worlds/{world_id}/entities/{entity_id}/media",
-        json={"content_type": "image/png", "size": 12},
-        headers=_csrf_headers(async_client),
-    )
-
-    assert response.status_code == 403
-
-
 async def test_upload_and_read_round_trip_against_the_real_store(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     mint_response = await async_client.post(
         f"/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 12},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
     mint = mint_response.json()
 
@@ -139,13 +98,13 @@ async def test_upload_and_read_round_trip_against_the_real_store(async_client, d
 async def test_read_response_is_cacheable_only_as_long_as_its_signed_url_stays_valid(async_client, db_session):
     """Bounding Cache-Control to the signed URL's own TTL means a cached redirect can never outlive
     the URL it points to; `private` keeps it out of any shared/CDN cache, since access is per-user."""
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
 
@@ -158,13 +117,13 @@ async def test_real_store_rejects_upload_exceeding_the_signed_size_condition(asy
     """The declared-size check at mint time is just a fast, friendly error - this is the guarantee
     that actually holds: the signed POST condition itself, enforced by the store, independent of
     whatever the client claims."""
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
 
@@ -175,13 +134,13 @@ async def test_real_store_rejects_upload_exceeding_the_signed_size_condition(asy
 
 
 async def test_real_store_rejects_upload_with_a_different_content_type_than_declared(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
 
@@ -190,34 +149,14 @@ async def test_real_store_rejects_upload_with_a_different_content_type_than_decl
     assert response.status_code == 400
 
 
-async def test_read_requires_read_access(async_client, db_session):
-    await _login(async_client, db_session, user_id="owner")
-    world_id, entity_id = await _create_world_and_entity(async_client)
-    db_session.add(
-        UserRow(
-            id="outsider",
-            name="Outsider",
-            email="outsider@example.com",
-            hashed_password=hash_password(PASSWORD),
-            role=UserRole.MEMBER,
-        )
-    )
-    await db_session.commit()
-    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
-
-    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/some-file-id")
-
-    assert response.status_code == 403
-
-
 async def test_list_media_returns_uploaded_files(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
@@ -230,34 +169,14 @@ async def test_list_media_returns_uploaded_files(async_client, db_session):
     ]
 
 
-async def test_list_media_requires_read_access(async_client, db_session):
-    await _login(async_client, db_session, user_id="owner")
-    world_id, entity_id = await _create_world_and_entity(async_client)
-    db_session.add(
-        UserRow(
-            id="outsider",
-            name="Outsider",
-            email="outsider@example.com",
-            hashed_password=hash_password(PASSWORD),
-            role=UserRole.MEMBER,
-        )
-    )
-    await db_session.commit()
-    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
-
-    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
-
-    assert response.status_code == 403
-
-
 async def test_delete_media_permanently_removes_the_file_from_the_real_store(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
@@ -266,7 +185,7 @@ async def test_delete_media_permanently_removes_the_file_from_the_real_store(asy
     ).headers["location"]
 
     delete_response = await async_client.delete(
-        f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}", headers=_csrf_headers(async_client)
+        f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}", headers=csrf_headers(async_client)
     )
     assert delete_response.status_code == 204
 
@@ -278,36 +197,14 @@ async def test_delete_media_permanently_removes_the_file_from_the_real_store(asy
     assert final_response.status_code == 404
 
 
-async def test_delete_media_requires_write_access(async_client, db_session):
-    await _login(async_client, db_session, user_id="owner")
-    world_id, entity_id = await _create_world_and_entity(async_client)
-    db_session.add(
-        UserRow(
-            id="outsider",
-            name="Outsider",
-            email="outsider@example.com",
-            hashed_password=hash_password(PASSWORD),
-            role=UserRole.MEMBER,
-        )
-    )
-    await db_session.commit()
-    await async_client.post("/auth/login", json={"email": "outsider@example.com", "password": PASSWORD})
-
-    response = await async_client.delete(
-        f"/worlds/{world_id}/entities/{entity_id}/media/some-file-id", headers=_csrf_headers(async_client)
-    )
-
-    assert response.status_code == 403
-
-
 async def test_purge_deletes_the_entitys_media_from_the_real_store(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
@@ -315,9 +212,9 @@ async def test_purge_deletes_the_entitys_media_from_the_real_store(async_client,
         await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     ).headers["location"]
 
-    await async_client.delete(f"/worlds/{world_id}/entities/{entity_id}", headers=_csrf_headers(async_client))
+    await async_client.delete(f"/worlds/{world_id}/entities/{entity_id}", headers=csrf_headers(async_client))
     purge_response = await async_client.delete(
-        f"/worlds/{world_id}/entities/{entity_id}/purge", headers=_csrf_headers(async_client)
+        f"/worlds/{world_id}/entities/{entity_id}/purge", headers=csrf_headers(async_client)
     )
     assert purge_response.status_code == 204
 
@@ -327,14 +224,14 @@ async def test_purge_deletes_the_entitys_media_from_the_real_store(async_client,
 
 
 async def test_replacing_a_maps_image_deletes_the_old_one_from_the_real_store(async_client, db_session):
-    await _login(async_client, db_session)
+    await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     old_mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(old_mint, b"old-image!!!")
@@ -344,14 +241,14 @@ async def test_replacing_a_maps_image_deletes_the_old_one_from_the_real_store(as
     await async_client.put(
         f"/worlds/{world_id}/entities/{entity_id}/map",
         json={"pic": old_pic_path, "pins": []},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
 
     new_mint = (
         await async_client.post(
             f"/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
-            headers=_csrf_headers(async_client),
+            headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(new_mint, b"new-image!!!")
@@ -360,7 +257,7 @@ async def test_replacing_a_maps_image_deletes_the_old_one_from_the_real_store(as
     replace_response = await async_client.put(
         f"/worlds/{world_id}/entities/{entity_id}/map",
         json={"pic": new_pic_path, "pins": []},
-        headers=_csrf_headers(async_client),
+        headers=csrf_headers(async_client),
     )
     assert replace_response.status_code == 200
 

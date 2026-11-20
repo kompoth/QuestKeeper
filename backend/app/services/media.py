@@ -1,4 +1,4 @@
-"""Entity-scoped media upload/read, behind presigned S3/MinIO URLs.
+"""Entity-scoped media upload/read, behind presigned S3 URLs.
 
 A media file belongs to exactly one entity - reuse across entities isn't supported, matching the
 same `get_entity_access` check already used for every other entity read/write. Reads never return a
@@ -13,7 +13,8 @@ from collections.abc import Sequence
 from app.domain.media import MediaStorage, UploadPolicy
 from app.domain.models import EntityId, UserId, WorldId
 from app.domain.repositories import Repositories
-from app.services.access import MediaTooLargeError, PermissionDeniedError, UnsupportedMediaTypeError, get_entity_access
+from app.services.access import get_entity_access
+from app.services.errors import MediaTooLargeError, PermissionDeniedError, UnsupportedMediaTypeError
 
 ALLOWED_CONTENT_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
 

@@ -34,6 +34,12 @@ export function isEntityOrDescendant (entitiesById: Map<string, Entity>, ancesto
   return false
 }
 
+function childrenOf (entity: Entity, entitiesById: Map<string, Entity>): Entity[] {
+  return entity.children
+    .map(id => entitiesById.get(id))
+    .filter((child): child is Entity => child !== undefined)
+}
+
 export function toNavItem (
   worldId: string,
   entity: Entity,
@@ -41,9 +47,7 @@ export function toNavItem (
   handlers: NavItemHandlers,
   isWorldOwner: boolean,
 ): NavItem {
-  const children = entity.children
-    .map(id => entitiesById.get(id))
-    .filter((child): child is Entity => child !== undefined)
+  const children = childrenOf(entity, entitiesById)
 
   return {
     id: entity.id,
@@ -73,9 +77,7 @@ export function toTrashNavItem (
   entitiesById: Map<string, Entity>,
   handlers: TrashNavItemHandlers,
 ): NavItem {
-  const children = entity.children
-    .map(id => entitiesById.get(id))
-    .filter((child): child is Entity => child !== undefined)
+  const children = childrenOf(entity, entitiesById)
 
   return {
     id: entity.id,

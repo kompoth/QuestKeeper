@@ -4,7 +4,3 @@
     <v-list-item prepend-icon="mdi-account-group" title="Users" to="/admin/users" />
   </v-list>
 </template>
-
-<script lang="ts" setup>
-//
-</script>

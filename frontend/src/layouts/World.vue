@@ -158,7 +158,7 @@
   import type { World } from '@/types/world'
   import { computed, provide, ref, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
-  import { ApiError } from '@/api/client'
+  import { apiErrorMessage } from '@/api/client'
   import {
     createEntity,
     deleteEntity,
@@ -178,6 +178,7 @@
   import NavBar from '@/components/NavBar.vue'
   import SidebarTabs from '@/components/SidebarTabs.vue'
   import { useAuth } from '@/composables/useAuth'
+  import { useLogout } from '@/composables/useLogout'
   import { useRenameDialog } from '@/composables/useRenameDialog'
   import { anonymousName } from '@/utils/anonymousName'
   import {
@@ -195,7 +196,8 @@
   ]
 
   const { renameDialogOpen, renameDialogTitle, openRenameDialog, confirmRename, cancelRename } = useRenameDialog()
-  const { currentUser, logout } = useAuth()
+  const { currentUser } = useAuth()
+  const { handleLogout } = useLogout()
 
   const route = useRoute()
   const router = useRouter()
@@ -274,7 +276,7 @@
   provide(entityTrashVersionKey, entityTrashVersion)
 
   async function handleDelete (entityId: string) {
-    const shouldRedirect = openEntityIsOrIsDescendantOf(entitiesById, entityId)
+    const shouldRedirect = shouldRedirectAfterRemoving(entitiesById, entityId)
 
     await deleteEntity(worldId.value, entityId)
     await Promise.all([refreshNavItems(), refreshTrash()])
@@ -285,14 +287,9 @@
     }
   }
 
-  async function handleLogout () {
-    await logout()
-    router.push('/login')
-  }
-
-  function openEntityIsOrIsDescendantOf (idsById: Map<string, Entity>, targetId: string): boolean {
+  function shouldRedirectAfterRemoving (entitiesById: Map<string, Entity>, targetId: string): boolean {
     const openEntityId = route.params.entityId as string | undefined
-    return openEntityId !== undefined && isEntityOrDescendant(idsById, targetId, openEntityId)
+    return openEntityId !== undefined && isEntityOrDescendant(entitiesById, targetId, openEntityId)
   }
 
   const trashNavItems = ref<NavItem[]>([])
@@ -337,7 +334,7 @@
   async function confirmPurge () {
     if (!purgeConfirmEntityId.value) return
     const entityId = purgeConfirmEntityId.value
-    const shouldRedirect = openEntityIsOrIsDescendantOf(trashEntitiesById, entityId)
+    const shouldRedirect = shouldRedirectAfterRemoving(trashEntitiesById, entityId)
 
     await purgeEntity(worldId.value, entityId)
     purgeConfirmOpen.value = false
@@ -417,7 +414,7 @@
       grantLevel.value = undefined
       await refreshPermissions()
     } catch (error) {
-      permissionsError.value = error instanceof ApiError ? error.detail : 'Something went wrong, please try again'
+      permissionsError.value = apiErrorMessage(error)
     } finally {
       granting.value = false
     }
@@ -429,7 +426,7 @@
       await revokePermission(worldId.value, grant.userId, permissionsEntityId.value)
       await refreshPermissions()
     } catch (error) {
-      permissionsError.value = error instanceof ApiError ? error.detail : 'Something went wrong, please try again'
+      permissionsError.value = apiErrorMessage(error)
     }
   }
 </script>

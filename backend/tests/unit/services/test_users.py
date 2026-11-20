@@ -1,44 +1,18 @@
 import pytest
 
 from app.domain.models import User, UserRole, UserStatus
-from app.domain.repositories import Repositories
-from app.services.access import (
+from app.services.errors import (
     CannotBanSelfError,
     CannotChangeOwnRoleError,
     EmailAlreadyRegisteredError,
     UserNotFoundError,
 )
 from app.services.users import change_user_role, change_user_status, create_user, list_users
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakeMailer,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeMailer, FakeUserRepository, make_repos
 
 USER_A = User(id="u-a", name="A", email="a@example.com", hashed_password="x", role=UserRole.MEMBER)
 USER_B = User(id="u-b", name="B", email="b@example.com", hashed_password="x", role=UserRole.MEMBER)
 FRONTEND_ORIGIN = "http://localhost:3000"
-
-
-def make_repos(*, users=None) -> Repositories:
-    return Repositories(
-        users=users or FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
 
 
 async def test_list_users_returns_a_page_and_the_total_count():

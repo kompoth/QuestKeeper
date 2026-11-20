@@ -3,18 +3,10 @@ import pytest
 from app.domain.models import Entity, PermissionLevel, World
 from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
-from app.services.access import FULL_ACCESS, EntityNotFoundError, get_entity_access
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from app.services.access import FULL_ACCESS, get_entity_access
+from app.services.errors import EntityNotFoundError
+from tests.unit.services.fakes import FakeEntityPermissionRepository, FakeEntityRepository, FakeWorldRepository
+from tests.unit.services.fakes import make_repos as _make_repos
 
 WORLD_ID = "w1"
 OWNER_ID = "owner"
@@ -30,17 +22,7 @@ def make_repos(*, entity, world=None, ancestor_ids=(), grants=None) -> Repositor
     )
     worlds = FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
     permissions = FakeEntityPermissionRepository(grants_by_user={USER_ID: grants} if grants is not None else {})
-    return Repositories(
-        users=FakeUserRepository(),
-        worlds=worlds,
-        entities=entities,
-        permissions=permissions,
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    return _make_repos(worlds=worlds, entities=entities, permissions=permissions)
 
 
 async def test_raises_when_entity_not_found():

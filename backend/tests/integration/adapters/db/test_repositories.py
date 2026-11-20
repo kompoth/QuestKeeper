@@ -40,7 +40,7 @@ from app.domain.models import (
     World,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError
+from app.services.errors import EmailAlreadyRegisteredError
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

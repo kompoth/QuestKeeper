@@ -1,7 +1,7 @@
 """Persistence interfaces, implemented by app.infra."""
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.domain.models import (
@@ -48,7 +48,10 @@ class UserRepository(Protocol):
         ...
 
     async def has_admin(self) -> bool:
-        """Whether any user currently holds the admin role - used to gate seed-admin bootstrapping."""
+        """Whether any user currently holds an active admin role - used to gate seed-admin bootstrapping.
+
+        A banned admin doesn't count, so re-seeding can recover access if the only admin gets banned.
+        """
         ...
 
     async def update_role(self, user_id: UserId, role: UserRole) -> None:
@@ -271,10 +274,6 @@ class RuntimeSettingsRepository(Protocol):
     async def update(self, settings: RuntimeSettings) -> None: ...
 
 
-async def _noop_commit() -> None:
-    return None
-
-
 @dataclass(frozen=True)
 class Repositories:
     """All repo ports bundled together, for passing around services in one argument."""
@@ -288,5 +287,3 @@ class Repositories:
     password_resets: PasswordResetRepository
     registration_confirmations: RegistrationConfirmationRepository
     runtime_settings: RuntimeSettingsRepository
-    # Durably persists writes made so far, for an operation that needs a mid-request commit point.
-    commit: Callable[[], Awaitable[None]] = field(default=_noop_commit)

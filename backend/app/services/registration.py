@@ -9,7 +9,7 @@ from app.domain.models import RegistrationConfirmation, User, UserRole, UserStat
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services import auth
-from app.services.access import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
 from app.services.signup import SignupResult
 
 REGISTRATION_TOKEN_TTL = timedelta(hours=24)

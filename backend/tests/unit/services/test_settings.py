@@ -1,31 +1,6 @@
 from app.domain.models import RuntimeSettings
-from app.domain.repositories import Repositories
 from app.services.settings import get_runtime_settings, update_runtime_settings
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
-
-
-def make_repos(*, runtime_settings=None) -> Repositories:
-    return Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=runtime_settings or FakeRuntimeSettingsRepository(),
-    )
+from tests.unit.services.fakes import make_repos
 
 
 async def test_get_runtime_settings_returns_defaults_when_never_written():

@@ -24,7 +24,19 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
+from app.domain.repositories import (
+    EntityPermissionRepository,
+    EntityRepository,
+    PasswordResetRepository,
+    RegistrationConfirmationRepository,
+    Repositories,
+    RuntimeSettingsRepository,
+    SessionRepository,
+    UserRepository,
+    WorldInviteRepository,
+    WorldRepository,
+)
+from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
 
 
 @dataclass
@@ -443,3 +455,29 @@ class FakeMediaStorage:
 
     async def list_objects(self, *, prefix: str) -> Sequence[str]:
         return [key for key in self.created_policies if key.startswith(prefix)]
+
+
+def make_repos(
+    *,
+    users: UserRepository | None = None,
+    worlds: WorldRepository | None = None,
+    entities: EntityRepository | None = None,
+    permissions: EntityPermissionRepository | None = None,
+    invites: WorldInviteRepository | None = None,
+    sessions: SessionRepository | None = None,
+    password_resets: PasswordResetRepository | None = None,
+    registration_confirmations: RegistrationConfirmationRepository | None = None,
+    runtime_settings: RuntimeSettingsRepository | None = None,
+) -> Repositories:
+    """Bundles fakes into a Repositories, defaulting any field not passed to a fresh empty fake."""
+    return Repositories(
+        users=users or FakeUserRepository(),
+        worlds=worlds or FakeWorldRepository(),
+        entities=entities or FakeEntityRepository(),
+        permissions=permissions or FakeEntityPermissionRepository(),
+        invites=invites or FakeWorldInviteRepository(),
+        sessions=sessions or FakeSessionRepository(),
+        password_resets=password_resets or FakePasswordResetRepository(),
+        registration_confirmations=registration_confirmations or FakeRegistrationConfirmationRepository(),
+        runtime_settings=runtime_settings or FakeRuntimeSettingsRepository(),
+    )

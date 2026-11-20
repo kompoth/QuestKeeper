@@ -1,7 +1,7 @@
 """Outbound media-storage port, implemented by app.adapters.media.S3MediaStorage.
 
 Media is entity-scoped object storage (one file belongs to exactly one entity), served through
-presigned S3/MinIO URLs so file bytes never pass through this backend - it only ever decides
+presigned S3 URLs so file bytes never pass through this backend - it only ever decides
 whether to mint a signature, never streams a file itself.
 """
 

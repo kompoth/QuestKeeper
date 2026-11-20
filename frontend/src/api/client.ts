@@ -19,6 +19,10 @@ export class ApiError extends Error {
   }
 }
 
+export function apiErrorMessage (error: unknown, fallback = 'Something went wrong, please try again'): string {
+  return error instanceof ApiError ? error.detail : fallback
+}
+
 function readCsrfCookie (): string | undefined {
   return document.cookie
     .split('; ')

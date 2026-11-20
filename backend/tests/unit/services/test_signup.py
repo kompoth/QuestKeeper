@@ -4,36 +4,17 @@ import pytest
 
 from app.domain.models import User, UserRole, UserStatus, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.access import EmailAlreadyRegisteredError, InviteTokenNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, InviteTokenNotFoundError
 from app.services.signup import confirm_invite_signup
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeUserRepository, FakeWorldInviteRepository
+from tests.unit.services.fakes import make_repos as _make_repos
 
 EMAIL = "new@example.com"
 PASSWORD = "correct horse battery staple"  # noqa: S105
 
 
 def make_repos(*, invites=None, users=None) -> Repositories:
-    return Repositories(
-        users=FakeUserRepository(users_by_id=users or {}),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=invites if invites is not None else FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    return _make_repos(users=FakeUserRepository(users_by_id=users or {}), invites=invites)
 
 
 def make_pending_user(user_id: str, *, email: str = EMAIL) -> User:

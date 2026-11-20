@@ -8,14 +8,33 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from app.adapters.db.orm import UserRow
 from app.api.dependencies import get_db_session, get_mailer
+from app.domain.models import UserRole
+from app.domain.security import hash_password
 from app.main import app
 from tests.unit.services.fakes import FakeMailer
+
+EMAIL = "user@example.com"
+PASSWORD = "correct horse battery staple"  # noqa: S105
 
 
 @pytest.fixture
 def mailer() -> FakeMailer:
     return FakeMailer()
+
+
+def csrf_headers(async_client) -> dict[str, str]:
+    return {"X-CSRF-Token": async_client.cookies["csrf_token"]}
+
+
+async def login(async_client, db_session, *, user_id: str = "owner", email: str = EMAIL) -> None:
+    """Creates a MEMBER user with the shared PASSWORD and logs them in via the real /auth/login route."""
+    db_session.add(
+        UserRow(id=user_id, name="User", email=email, hashed_password=hash_password(PASSWORD), role=UserRole.MEMBER)
+    )
+    await db_session.commit()
+    await async_client.post("/auth/login", json={"email": email, "password": PASSWORD})
 
 
 @pytest_asyncio.fixture(loop_scope="session")

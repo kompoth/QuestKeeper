@@ -2,7 +2,7 @@ import pytest
 
 from app.domain.models import Entity, PermissionLevel, User, UserRole, UserStatus, World, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.access import (
+from app.services.errors import (
     EntityNotFoundError,
     InviteNotFoundError,
     PermissionDeniedError,
@@ -23,17 +23,13 @@ from app.services.sharing import (
     revoke_permission,
 )
 from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
     FakeEntityRepository,
     FakeMailer,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
     FakeUserRepository,
     FakeWorldInviteRepository,
     FakeWorldRepository,
 )
+from tests.unit.services.fakes import make_repos as _make_repos
 
 WORLD_ID = "w1"
 OWNER_ID = "owner"
@@ -49,16 +45,12 @@ def make_repos(
     entities_by_id = dict(entities) if entities else {}
     if entity:
         entities_by_id[entity.id] = entity
-    return Repositories(
+    return _make_repos(
         users=FakeUserRepository(users_by_id=users or {}),
         worlds=FakeWorldRepository(worlds_by_id={world.id: world} if world else {}),
         entities=FakeEntityRepository(entities_by_id=entities_by_id, ancestor_ids_by_entity=ancestor_ids or {}),
-        permissions=permissions if permissions is not None else FakeEntityPermissionRepository(),
-        invites=invites if invites is not None else FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
+        permissions=permissions,
+        invites=invites,
     )
 
 
@@ -277,18 +269,7 @@ async def test_create_invite_creates_pending_placeholder_user_and_sends_mail_whe
 async def test_create_invite_reuses_pending_placeholder_when_re_inviting_same_email():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     invites = FakeWorldInviteRepository()
-    users = FakeUserRepository()
-    repos = Repositories(
-        users=users,
-        worlds=FakeWorldRepository(worlds_by_id={world.id: world}),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=invites,
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    repos = make_repos(world=world, invites=invites)
     mailer = FakeMailer()
 
     first = await create_invite(
@@ -301,7 +282,7 @@ async def test_create_invite_reuses_pending_placeholder_when_re_inviting_same_em
     assert len(invites.invites) == 1
     assert second.id == first.id
     assert second.invitee_id == first.invitee_id
-    assert await users.count() == 1
+    assert await repos.users.count() == 1
 
 
 async def test_create_invite_raises_when_caller_is_not_owner():
@@ -334,18 +315,8 @@ async def test_list_invites_for_world_raises_when_caller_is_not_owner():
         await list_invites_for_world(repos, OTHER_USER_ID, WORLD_ID)
 
 
-async def test_expel_invitee_deletes_a_pending_invite():
-    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
-    invitee = make_invitee()
-    invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID)
-    repos = make_repos(world=world, users={invitee.id: invitee}, invites=FakeWorldInviteRepository(invites=[invite]))
-
-    await expel_invitee(repos, OWNER_ID, WORLD_ID, invitee.email)
-
-    assert await repos.invites.get_all_for_world(WORLD_ID) == []
-
-
-async def test_expel_invitee_deletes_an_accepted_invite():
+async def test_expel_invitee_deletes_the_invite_regardless_of_acceptance():
+    # expel_invitee deletes by (world_id, invitee_id) alone - accepted status never gates it.
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     invitee = make_invitee()
     invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=GRANTEE_ID, accepted=True)

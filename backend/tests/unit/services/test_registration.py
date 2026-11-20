@@ -4,20 +4,10 @@ import pytest
 
 from app.domain.models import RegistrationConfirmation, User, UserRole, UserStatus
 from app.domain.repositories import Repositories
-from app.services.access import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, RegistrationTokenNotFoundError
 from app.services.registration import confirm_registration, request_registration
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakeMailer,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeMailer, FakeRegistrationConfirmationRepository, FakeUserRepository
+from tests.unit.services.fakes import make_repos as _make_repos
 
 EMAIL = "new@example.com"
 PASSWORD = "correct horse battery staple"  # noqa: S105
@@ -25,16 +15,8 @@ FRONTEND_ORIGIN = "http://localhost:5173"
 
 
 def make_repos(*, users=None, registration_confirmations=None) -> Repositories:
-    return Repositories(
-        users=FakeUserRepository(users_by_id=users or {}),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=registration_confirmations or FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
+    return _make_repos(
+        users=FakeUserRepository(users_by_id=users or {}), registration_confirmations=registration_confirmations
     )
 
 

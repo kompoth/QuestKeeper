@@ -37,7 +37,6 @@ def build_repositories(session: AsyncSession) -> Repositories:
         password_resets=SqlPasswordResetRepository(session),
         registration_confirmations=SqlRegistrationConfirmationRepository(session),
         runtime_settings=SqlRuntimeSettingsRepository(session),
-        commit=session.commit,
     )
 
 

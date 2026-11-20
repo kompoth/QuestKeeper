@@ -7,7 +7,7 @@ from app.domain.mail import Mailer
 from app.domain.models import PasswordReset, User, UserId, UserStatus
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
-from app.services.access import PasswordResetTokenNotFoundError, UserNotFoundError
+from app.services.errors import PasswordResetTokenNotFoundError, UserNotFoundError
 
 RESET_TOKEN_TTL = timedelta(hours=1)
 

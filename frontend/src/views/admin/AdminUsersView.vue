@@ -104,6 +104,7 @@
   import { ApiError } from '@/api/client'
   import MemberItem from '@/components/MemberItem.vue'
   import { useAuth } from '@/composables/useAuth'
+  import { useSnackbar } from '@/composables/useSnackbar'
   import { formatDate } from '@/utils/date'
 
   const { currentUser } = useAuth()
@@ -134,20 +135,12 @@
 
   const canCreateUser = computed(() => newUsername.value.trim() !== '' && newUserEmail.value.trim() !== '')
 
-  const snackbar = ref(false)
-  const snackbarText = ref('')
-  const snackbarColor = ref('success')
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   function statusColor (status: UserStatus) {
     if (status === 'banned') return 'error'
     if (status === 'pending') return 'warning'
     return 'success'
-  }
-
-  function notify (text: string, color: string) {
-    snackbarText.value = text
-    snackbarColor.value = color
-    snackbar.value = true
   }
 
   async function fetchPage (options: { page: number, itemsPerPage: number, search?: string }) {

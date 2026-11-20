@@ -5,20 +5,10 @@ import pytest
 from app.domain.models import PasswordReset, Session, User, UserRole
 from app.domain.repositories import Repositories
 from app.domain.security import verify_password
-from app.services.access import PasswordResetTokenNotFoundError, UserNotFoundError
+from app.services.errors import PasswordResetTokenNotFoundError, UserNotFoundError
 from app.services.password_reset import request_password_reset, request_password_reset_for_user, reset_password
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakeMailer,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeMailer, FakePasswordResetRepository, FakeSessionRepository, FakeUserRepository
+from tests.unit.services.fakes import make_repos as _make_repos
 
 USER_ID = "u1"
 EMAIL = "user@example.com"
@@ -32,16 +22,8 @@ def make_user() -> User:
 
 
 def make_repos(*, users=None, sessions=None, password_resets=None) -> Repositories:
-    return Repositories(
-        users=FakeUserRepository(users_by_id=users or {}),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=sessions or FakeSessionRepository(),
-        password_resets=password_resets or FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
+    return _make_repos(
+        users=FakeUserRepository(users_by_id=users or {}), sessions=sessions, password_resets=password_resets
     )
 
 

@@ -4,7 +4,6 @@
  * Manual routes for ./src/layouts/*.vue
  */
 
-// Composables
 import { createRouter, createWebHistory } from 'vue-router'
 import { getEntity } from '@/api/entities'
 import { getWorld } from '@/api/worlds'

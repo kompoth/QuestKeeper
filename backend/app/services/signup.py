@@ -6,7 +6,7 @@ from app.domain.models import Session, User, UserStatus
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
 from app.services import auth
-from app.services.access import EmailAlreadyRegisteredError, InviteTokenNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, InviteTokenNotFoundError
 from app.services.sharing import accept_invite
 
 

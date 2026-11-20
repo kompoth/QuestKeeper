@@ -13,16 +13,9 @@
 </template>
 
 <script lang="ts" setup>
-  import { useRouter } from 'vue-router'
   import AdminNav from '@/components/AdminNav.vue'
   import NavBar from '@/components/NavBar.vue'
-  import { useAuth } from '@/composables/useAuth'
+  import { useLogout } from '@/composables/useLogout'
 
-  const router = useRouter()
-  const { logout } = useAuth()
-
-  async function handleLogout () {
-    await logout()
-    router.push('/login')
-  }
+  const { handleLogout } = useLogout()
 </script>

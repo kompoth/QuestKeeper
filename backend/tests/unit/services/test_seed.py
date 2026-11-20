@@ -1,34 +1,9 @@
 from app.domain.models import User, UserRole, UserStatus
-from app.domain.repositories import Repositories
 from app.services.seed import ensure_seed_admin
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeUserRepository, make_repos
 
 EMAIL = "admin@example.com"
 PASSWORD = "seed password"  # noqa: S105
-
-
-def make_repos(*, users=None) -> Repositories:
-    return Repositories(
-        users=users or FakeUserRepository(),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
 
 
 async def test_creates_an_admin_when_no_admin_exists_and_the_email_is_unknown():

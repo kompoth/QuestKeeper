@@ -8,7 +8,7 @@ from app.domain.mail import Mailer
 from app.domain.models import User, UserId, UserRole, UserStatus
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
-from app.services.access import (
+from app.services.errors import (
     CannotBanSelfError,
     CannotChangeOwnRoleError,
     InvalidStatusTransitionError,

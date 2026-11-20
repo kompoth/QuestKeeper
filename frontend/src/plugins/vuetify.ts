@@ -8,7 +8,6 @@
  * MIT License, Copyright (c) 2023 Steph Ango
  */
 
-// Composables
 import { createVuetify, type ThemeDefinition } from 'vuetify'
 // Styles
 import '@mdi/font/css/materialdesignicons.css'

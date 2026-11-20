@@ -21,13 +21,12 @@
 <script lang="ts" setup>
   import { onMounted, ref } from 'vue'
   import { getRuntimeSettings, updateRuntimeSettings } from '@/api/admin'
+  import { useSnackbar } from '@/composables/useSnackbar'
 
   const registrationEnabled = ref(true)
   const passwordResetEnabled = ref(true)
 
-  const snackbar = ref(false)
-  const snackbarText = ref('')
-  const snackbarColor = ref('success')
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   onMounted(async () => {
     const settings = await getRuntimeSettings()
@@ -41,12 +40,9 @@
         registrationEnabled: registrationEnabled.value,
         passwordResetEnabled: passwordResetEnabled.value,
       })
-      snackbarColor.value = 'success'
-      snackbarText.value = 'Settings saved'
+      notify('Settings saved', 'success')
     } catch {
-      snackbarColor.value = 'error'
-      snackbarText.value = 'Failed to save settings'
+      notify('Failed to save settings', 'error')
     }
-    snackbar.value = true
   }
 </script>

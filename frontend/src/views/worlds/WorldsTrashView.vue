@@ -91,6 +91,7 @@
   import { onMounted, ref } from 'vue'
   import { listWorldTrash, purgeWorld, restoreWorld } from '@/api/worlds'
   import WorldCard from '@/components/WorldCard.vue'
+  import { useSnackbar } from '@/composables/useSnackbar'
   import { formatDate } from '@/utils/date'
 
   const worlds = ref<World[]>([])
@@ -100,15 +101,7 @@
   const purgeTarget = ref<World>()
   const purgeConfirmation = ref('')
 
-  const snackbar = ref(false)
-  const snackbarText = ref('')
-  const snackbarColor = ref('success')
-
-  function notify (text: string, color: string) {
-    snackbarText.value = text
-    snackbarColor.value = color
-    snackbar.value = true
-  }
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   async function refreshTrash () {
     loading.value = true

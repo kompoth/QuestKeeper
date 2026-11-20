@@ -22,7 +22,7 @@ from app.domain.models import (
 )
 from app.domain.repositories import Repositories
 from app.domain.security import hash_password
-from app.services.access import (
+from app.services.errors import (
     EntityNotFoundError,
     InviteNotFoundError,
     PermissionDeniedError,
@@ -203,9 +203,7 @@ async def expel_invitee(repos: Repositories, user_id: UserId, world_id: WorldId,
     if invitee is None:
         raise InviteNotFoundError(world_id, invitee_email)
 
-    invites = await repos.invites.get_all_for_world(world_id)
-    invite = next((candidate for candidate in invites if candidate.invitee_id == invitee.id), None)
-    if invite is None:
+    if await repos.invites.get_for_user(world_id, invitee.id) is None:
         raise InviteNotFoundError(world_id, invitee.id)
 
     await repos.invites.delete(world_id, invitee.id)

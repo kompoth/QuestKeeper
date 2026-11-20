@@ -44,7 +44,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
-from app.services.access import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
 
 _RUNTIME_SETTINGS_ID = "singleton"
 
@@ -72,6 +72,27 @@ def _apply_search(query: Any, search: str | None) -> Any:  # noqa: ANN401 -- a S
         return query
     pattern = f"%{search}%"
     return query.where(or_(UserRow.name.ilike(pattern), UserRow.email.ilike(pattern)))
+
+
+def _aware_utc(value: datetime) -> datetime:
+    """DATETIME columns round-trip as naive on both SQLite and MySQL; every value stored here is UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+async def _unexpired_row_by_token(session: AsyncSession, row_cls: Any, token: str) -> Any:  # noqa: ANN401
+    """The row with this token, or None if there isn't one or its `expires_at` is in the past."""
+    result = await session.execute(select(row_cls).where(row_cls.token == token))
+    row = result.scalar_one_or_none()
+    if row is None or _aware_utc(row.expires_at) <= datetime.now(UTC):
+        return None
+    return row
+
+
+async def _delete_by_token(session: AsyncSession, row_cls: Any, token: str) -> None:  # noqa: ANN401
+    result = await session.execute(select(row_cls).where(row_cls.token == token))
+    row = result.scalar_one_or_none()
+    if row is not None:
+        await session.delete(row)
 
 
 def _user_from_row(row: UserRow) -> User:
@@ -427,17 +448,29 @@ class SqlEntityRepository:
         row.name = name
         await self._touch(entity_id, actor_id)
 
-    async def delete(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
-        """Soft-deletes `entity_id` and its whole descendant subtree, found by repeated child lookups."""
-        subtree_ids = {entity_id}
+    async def _subtree_ids(
+        self, world_id: WorldId, entity_id: EntityId, *, deleted_only: bool = False
+    ) -> list[EntityId]:
+        """`entity_id` and its descendant ids, discovered breadth-first (parent before child, so a
+        caller needing children-before-parents order can just reverse the result).
+
+        Ignores deleted_at by default; pass `deleted_only` to stop a branch at the first entity
+        that isn't tombstoned.
+        """
+        subtree_ids = [entity_id]
         frontier = [entity_id]
         while frontier:
-            result = await self._session.execute(
-                select(EntityRow.id).where(EntityRow.parent_id.in_(frontier), EntityRow.world_id == world_id)
-            )
+            conditions = [EntityRow.parent_id.in_(frontier), EntityRow.world_id == world_id]
+            if deleted_only:
+                conditions.append(EntityRow.deleted_at.is_not(None))
+            result = await self._session.execute(select(EntityRow.id).where(*conditions))
             frontier = [child_id for child_id in result.scalars() if child_id not in subtree_ids]
-            subtree_ids.update(frontier)
+            subtree_ids.extend(frontier)
+        return subtree_ids
 
+    async def delete(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
+        """Soft-deletes `entity_id` and its whole descendant subtree."""
+        subtree_ids = await self._subtree_ids(world_id, entity_id)
         now = datetime.now(UTC)
         await self._session.execute(
             update(EntityRow)
@@ -479,20 +512,8 @@ class SqlEntityRepository:
     async def restore_branch(self, world_id: WorldId, entity_id: EntityId, actor_id: UserId) -> None:
         """Restores `entity_id`, every still-tombstoned entity in its descendant subtree, and any
         still-tombstoned ancestors needed to make it reachable again in the live tree."""
-        subtree_ids = {entity_id}
-        frontier = [entity_id]
-        while frontier:
-            result = await self._session.execute(
-                select(EntityRow.id).where(
-                    EntityRow.parent_id.in_(frontier),
-                    EntityRow.world_id == world_id,
-                    EntityRow.deleted_at.is_not(None),
-                )
-            )
-            frontier = [child_id for child_id in result.scalars() if child_id not in subtree_ids]
-            subtree_ids.update(frontier)
-
-        ids_to_restore = subtree_ids.union(await self._still_trashed_ancestor_ids(world_id, entity_id))
+        subtree_ids = await self._subtree_ids(world_id, entity_id, deleted_only=True)
+        ids_to_restore = set(subtree_ids) | set(await self._still_trashed_ancestor_ids(world_id, entity_id))
         now = datetime.now(UTC)
         await self._session.execute(
             update(EntityRow)
@@ -501,18 +522,11 @@ class SqlEntityRepository:
         )
 
     async def purge(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
-        """Permanently deletes `entity_id` and its entire descendant subtree (tombstoned or not),
-        found the same way `delete()` finds its subtree - ignoring deleted_at, so purging an ancestor
-        always takes its whole branch with it, even a part of it that was separately restored.
+        """Permanently deletes `entity_id` and its entire descendant subtree (tombstoned or not) -
+        ignoring deleted_at, so purging an ancestor always takes its whole branch with it, even a
+        part of it that was separately restored.
         """
-        subtree_ids = [entity_id]
-        frontier = [entity_id]
-        while frontier:
-            result = await self._session.execute(
-                select(EntityRow.id).where(EntityRow.parent_id.in_(frontier), EntityRow.world_id == world_id)
-            )
-            frontier = [child_id for child_id in result.scalars() if child_id not in subtree_ids]
-            subtree_ids.extend(frontier)
+        subtree_ids = await self._subtree_ids(world_id, entity_id)
 
         # Pins can target any entity in the world, not just ones in this subtree's own map(s).
         await self._session.execute(delete(MapPinRow).where(MapPinRow.pinned_entity_id.in_(subtree_ids)))
@@ -614,8 +628,7 @@ class SqlSessionRepository:
         if row is None:
             return None
 
-        # DATETIME columns round-trip as naive on both SQLite and MySQL; every value stored here is UTC.
-        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
+        expires_at = _aware_utc(row.expires_at)
         if expires_at <= datetime.now(UTC):
             return None
         return Session(token=row.token, user_id=row.user_id, expires_at=expires_at)
@@ -642,21 +655,13 @@ class SqlPasswordResetRepository:
         )
 
     async def get(self, token: str) -> PasswordReset | None:
-        result = await self._session.execute(select(PasswordResetRow).where(PasswordResetRow.token == token))
-        row = result.scalar_one_or_none()
+        row = await _unexpired_row_by_token(self._session, PasswordResetRow, token)
         if row is None:
             return None
-
-        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
-        if expires_at <= datetime.now(UTC):
-            return None
-        return PasswordReset(token=row.token, user_id=row.user_id, expires_at=expires_at)
+        return PasswordReset(token=row.token, user_id=row.user_id, expires_at=_aware_utc(row.expires_at))
 
     async def delete(self, token: str) -> None:
-        result = await self._session.execute(select(PasswordResetRow).where(PasswordResetRow.token == token))
-        row = result.scalar_one_or_none()
-        if row is not None:
-            await self._session.delete(row)
+        await _delete_by_token(self._session, PasswordResetRow, token)
 
 
 class SqlRegistrationConfirmationRepository:
@@ -672,25 +677,13 @@ class SqlRegistrationConfirmationRepository:
         )
 
     async def get(self, token: str) -> RegistrationConfirmation | None:
-        result = await self._session.execute(
-            select(RegistrationConfirmationRow).where(RegistrationConfirmationRow.token == token)
-        )
-        row = result.scalar_one_or_none()
+        row = await _unexpired_row_by_token(self._session, RegistrationConfirmationRow, token)
         if row is None:
             return None
-
-        expires_at = row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at
-        if expires_at <= datetime.now(UTC):
-            return None
-        return RegistrationConfirmation(token=row.token, user_id=row.user_id, expires_at=expires_at)
+        return RegistrationConfirmation(token=row.token, user_id=row.user_id, expires_at=_aware_utc(row.expires_at))
 
     async def delete(self, token: str) -> None:
-        result = await self._session.execute(
-            select(RegistrationConfirmationRow).where(RegistrationConfirmationRow.token == token)
-        )
-        row = result.scalar_one_or_none()
-        if row is not None:
-            await self._session.delete(row)
+        await _delete_by_token(self._session, RegistrationConfirmationRow, token)
 
 
 class SqlWorldInviteRepository:
@@ -725,10 +718,7 @@ class SqlWorldInviteRepository:
         if row is None or row.accepted or row.token_expires_at is None:
             return None
 
-        expires_at = (
-            row.token_expires_at.replace(tzinfo=UTC) if row.token_expires_at.tzinfo is None else row.token_expires_at
-        )
-        if expires_at <= datetime.now(UTC):
+        if _aware_utc(row.token_expires_at) <= datetime.now(UTC):
             return None
         return _invite_from_row(row)
 

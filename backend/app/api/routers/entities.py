@@ -1,6 +1,7 @@
 """Entity listing, creation, mutation, and article/map facets."""
 
 from collections.abc import Sequence
+from typing import TypedDict
 
 from fastapi import APIRouter, Depends, status
 
@@ -15,7 +16,7 @@ from app.api.schemas import (
     SetArticleRequest,
     SetMapRequest,
 )
-from app.domain.models import EntityId, User, UserId, WorldId
+from app.domain.models import EntityId, PermissionLevel, User, UserId, WorldId
 from app.domain.repositories import Repositories
 from app.services.entities import (
     clear_article,
@@ -32,7 +33,7 @@ from app.services.entities import (
     set_article,
     set_map,
 )
-from app.services.sharing import get_entity_permissions
+from app.services.sharing import EntityGrant, InheritedEntityGrant, get_entity_permissions
 
 router = APIRouter(prefix="/worlds/{world_id}/entities", tags=["entities"])
 
@@ -140,29 +141,31 @@ async def delete_map(
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
+class _GrantOutFields(TypedDict):
+    user_id: UserId
+    email: str
+    name: str | None
+    level: PermissionLevel
+
+
+def _grant_out_fields(grant: EntityGrant | InheritedEntityGrant) -> _GrantOutFields:
+    return _GrantOutFields(
+        user_id=grant.user.id,
+        email=grant.user.email,
+        name=_grantee_name(grant.user, invite_accepted=grant.invite_accepted),
+        level=grant.level,
+    )
+
+
 @router.get("/{entity_id}/permissions")
 async def get_permissions(
     world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos
 ) -> EntityPermissionsOut:
     view = await get_entity_permissions(repos, user.id, world_id, entity_id)
     return EntityPermissionsOut(
-        direct=[
-            EntityGrantOut(
-                user_id=grant.user.id,
-                email=grant.user.email,
-                name=_grantee_name(grant.user, invite_accepted=grant.invite_accepted),
-                level=grant.level,
-            )
-            for grant in view.direct
-        ],
+        direct=[EntityGrantOut(**_grant_out_fields(grant)) for grant in view.direct],
         inherited=[
-            InheritedEntityGrantOut(
-                user_id=grant.user.id,
-                email=grant.user.email,
-                name=_grantee_name(grant.user, invite_accepted=grant.invite_accepted),
-                level=grant.level,
-                from_entity_id=grant.from_entity_id,
-            )
+            InheritedEntityGrantOut(**_grant_out_fields(grant), from_entity_id=grant.from_entity_id)
             for grant in view.inherited
         ],
     )

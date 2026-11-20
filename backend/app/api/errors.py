@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse
 
 from app.adapters.db.repositories import InviteNotFoundError as SqlInviteNotFoundError
 from app.domain.mail import MailDeliveryError
-from app.services.access import (
+from app.services.auth import InvalidCredentialsError, InvalidSessionError, UserBannedError, UserPendingError
+from app.services.errors import (
     CannotBanSelfError,
     CannotChangeOwnRoleError,
     EmailAlreadyRegisteredError,
@@ -25,7 +26,6 @@ from app.services.access import (
     WorldNotFoundError,
     WorldNotInTrashError,
 )
-from app.services.auth import InvalidCredentialsError, InvalidSessionError, UserBannedError, UserPendingError
 
 logger = logging.getLogger(__name__)
 

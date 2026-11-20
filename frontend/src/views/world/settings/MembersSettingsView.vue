@@ -58,9 +58,10 @@
   import type { InviteSummary } from '@/types/invite'
   import { computed, onMounted, ref } from 'vue'
   import { useRoute } from 'vue-router'
-  import { ApiError } from '@/api/client'
+  import { apiErrorMessage } from '@/api/client'
   import { createInvite, expelInvitee, listInvites } from '@/api/invites'
   import InviteeItem from '@/components/InviteeItem.vue'
+  import { useSnackbar } from '@/composables/useSnackbar'
 
   const route = useRoute()
   const worldId = route.params.worldId as string
@@ -77,17 +78,9 @@
   const inviteError = ref<string>()
   const inviteSubmitting = ref(false)
 
-  const snackbar = ref(false)
-  const snackbarText = ref('')
-  const snackbarColor = ref('success')
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   const canSendInvite = computed(() => inviteEmail.value !== '')
-
-  function notify (text: string, color: string) {
-    snackbarText.value = text
-    snackbarColor.value = color
-    snackbar.value = true
-  }
 
   async function refreshInvites () {
     loading.value = true
@@ -109,7 +102,7 @@
       inviteEmail.value = ''
       await refreshInvites()
     } catch (error) {
-      inviteError.value = error instanceof ApiError ? error.detail : 'Something went wrong, please try again'
+      inviteError.value = apiErrorMessage(error)
     } finally {
       inviteSubmitting.value = false
     }

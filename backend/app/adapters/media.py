@@ -1,4 +1,4 @@
-"""S3-compatible (MinIO/AWS S3) MediaStorage adapter."""
+"""MediaStorage adapter for AWS S3 or any S3-compatible store (Garage in dev)."""
 
 from collections.abc import Sequence
 

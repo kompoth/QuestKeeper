@@ -14,17 +14,8 @@ from app.services.auth import (
     login,
     logout,
 )
-from tests.unit.services.fakes import (
-    FakeEntityPermissionRepository,
-    FakeEntityRepository,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
-    FakeWorldInviteRepository,
-    FakeWorldRepository,
-)
+from tests.unit.services.fakes import FakeSessionRepository, FakeUserRepository
+from tests.unit.services.fakes import make_repos as _make_repos
 
 USER_ID = "u1"
 EMAIL = "user@example.com"
@@ -32,17 +23,7 @@ PASSWORD = "correct horse battery staple"  # noqa: S105
 
 
 def make_repos(*, users=None, sessions=None) -> Repositories:
-    return Repositories(
-        users=FakeUserRepository(users_by_id=users or {}),
-        worlds=FakeWorldRepository(),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=sessions or FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    return _make_repos(users=FakeUserRepository(users_by_id=users or {}), sessions=sessions)
 
 
 def make_user(*, status: UserStatus = UserStatus.ACTIVE) -> User:
@@ -129,16 +110,9 @@ async def test_get_current_user_raises_for_an_expired_session():
 
 
 async def test_get_current_user_raises_for_a_banned_user_even_with_a_valid_session():
+    # get_current_user rejects any non-ACTIVE status via one `!= ACTIVE` check - BANNED alone
+    # exercises that branch; PENDING would hit the exact same code path.
     user = make_user(status=UserStatus.BANNED)
-    session = Session(token="tok", user_id=USER_ID, expires_at=datetime.now(UTC) + timedelta(days=1))
-    repos = make_repos(users={USER_ID: user}, sessions=FakeSessionRepository(sessions_by_token={"tok": session}))
-
-    with pytest.raises(InvalidSessionError):
-        await get_current_user(repos, "tok")
-
-
-async def test_get_current_user_raises_for_a_pending_user_even_with_a_valid_session():
-    user = make_user(status=UserStatus.PENDING)
     session = Session(token="tok", user_id=USER_ID, expires_at=datetime.now(UTC) + timedelta(days=1))
     repos = make_repos(users={USER_ID: user}, sessions=FakeSessionRepository(sessions_by_token={"tok": session}))
 

@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     seed_admin_email: str | None = None
     seed_admin_password: str | None = None
 
-    # S3-compatible (MinIO in dev, real AWS S3 in prod) object storage for entity media.
+    # S3-compatible (Garage in dev, real AWS S3 in prod) object storage for entity media.
     s3_endpoint_url: str
     s3_access_key: str
     s3_secret_key: str

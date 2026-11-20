@@ -4,7 +4,7 @@ import pytest
 
 from app.domain.models import PermissionLevel, World, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.access import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
+from app.services.errors import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
 from app.services.worlds import (
     create_world,
     delete_world,
@@ -17,54 +17,31 @@ from app.services.worlds import (
 )
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
-    FakeEntityRepository,
     FakeMediaStorage,
-    FakePasswordResetRepository,
-    FakeRegistrationConfirmationRepository,
-    FakeRuntimeSettingsRepository,
-    FakeSessionRepository,
-    FakeUserRepository,
     FakeWorldInviteRepository,
     FakeWorldRepository,
 )
+from tests.unit.services.fakes import make_repos as _make_repos
 
 OWNER_ID = "owner"
 OTHER_USER_ID = "other"
 WORLD_ID = "w1"
 
 
-def make_repos(*, world=None) -> Repositories:
-    worlds = FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
-    return Repositories(
-        users=FakeUserRepository(),
-        worlds=worlds,
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+def make_repos(*, world=None, worlds=None, permissions=None, invites=None) -> Repositories:
+    worlds = worlds or FakeWorldRepository(worlds_by_id={world.id: world} if world else {})
+    return _make_repos(worlds=worlds, permissions=permissions, invites=invites)
 
 
 async def test_list_worlds_returns_owned_and_granted_worlds_but_not_others():
     owned = World(id="w-owned", owner_id=OWNER_ID, name="Owned")
     granted = World(id="w-granted", owner_id=OTHER_USER_ID, name="Granted")
     other = World(id="w-other", owner_id=OTHER_USER_ID, name="Other")
-    repos = Repositories(
-        users=FakeUserRepository(),
+    repos = make_repos(
         worlds=FakeWorldRepository(
             worlds_by_id={world.id: world for world in (owned, granted, other)},
             granted_world_ids_by_user={OWNER_ID: {"w-granted"}},
-        ),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
+        )
     )
 
     result = await list_worlds(repos, OWNER_ID)
@@ -83,17 +60,8 @@ async def test_get_world_succeeds_for_owner():
 
 async def test_get_world_succeeds_for_a_user_with_any_grant_in_the_world():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(worlds_by_id={WORLD_ID: world}),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(grants_by_user={OTHER_USER_ID: {"e1": PermissionLevel.READ}}),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    permissions = FakeEntityPermissionRepository(grants_by_user={OTHER_USER_ID: {"e1": PermissionLevel.READ}})
+    repos = make_repos(world=world, permissions=permissions)
 
     found = await get_world(repos, OTHER_USER_ID, WORLD_ID)
 
@@ -103,17 +71,7 @@ async def test_get_world_succeeds_for_a_user_with_any_grant_in_the_world():
 async def test_get_world_succeeds_for_a_user_with_an_unaccepted_invite_and_no_grants():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     invite = WorldInvite(id="i1", world_id=WORLD_ID, invitee_id=OTHER_USER_ID, accepted=False)
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(worlds_by_id={WORLD_ID: world}),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(invites=[invite]),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    repos = make_repos(world=world, invites=FakeWorldInviteRepository(invites=[invite]))
 
     found = await get_world(repos, OTHER_USER_ID, WORLD_ID)
 
@@ -140,6 +98,7 @@ async def test_create_world_persists_a_new_world_owned_by_the_caller():
 
     world_id = await create_world(repos, OWNER_ID, "My World", description="A tale")
 
+    assert len(world_id) == 12
     world = await repos.worlds.get(world_id)
     assert world is not None
     assert world.owner_id == OWNER_ID
@@ -147,27 +106,9 @@ async def test_create_world_persists_a_new_world_owned_by_the_caller():
     assert world.description == "A tale"
 
 
-async def test_create_world_generates_a_short_id():
-    repos = make_repos()
-
-    world_id = await create_world(repos, OWNER_ID, "My World")
-
-    assert len(world_id) == 12
-
-
 async def test_create_world_retries_once_on_id_collision():
     worlds = FakeWorldRepository(collide_next_creates=1)
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=worlds,
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    repos = make_repos(worlds=worlds)
 
     world_id = await create_world(repos, OWNER_ID, "My World")
 
@@ -175,18 +116,7 @@ async def test_create_world_retries_once_on_id_collision():
 
 
 async def test_create_world_raises_after_a_second_id_collision():
-    worlds = FakeWorldRepository(collide_next_creates=2)
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=worlds,
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    repos = make_repos(worlds=FakeWorldRepository(collide_next_creates=2))
 
     with pytest.raises(IdCollisionError):
         await create_world(repos, OWNER_ID, "My World")
@@ -194,27 +124,24 @@ async def test_create_world_raises_after_a_second_id_collision():
 
 async def test_update_world_raises_when_world_not_found():
     repos = make_repos()
-    patch = World(id=WORLD_ID, owner_id=OWNER_ID, name="New Name")
 
     with pytest.raises(WorldNotFoundError):
-        await update_world(repos, OWNER_ID, patch)
+        await update_world(repos, OWNER_ID, WORLD_ID, "New Name")
 
 
 async def test_update_world_raises_when_caller_is_not_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
     repos = make_repos(world=world)
-    patch = World(id=WORLD_ID, owner_id=OWNER_ID, name="New Name")
 
     with pytest.raises(PermissionDeniedError):
-        await update_world(repos, OTHER_USER_ID, patch)
+        await update_world(repos, OTHER_USER_ID, WORLD_ID, "New Name")
 
 
 async def test_update_world_replaces_mutable_fields_for_the_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", description="Old")
     repos = make_repos(world=world)
-    patch = World(id=WORLD_ID, owner_id=OWNER_ID, name="New Name", description="New", pic="pic.png")
 
-    await update_world(repos, OWNER_ID, patch)
+    await update_world(repos, OWNER_ID, WORLD_ID, "New Name", "New", "pic.png")
 
     updated = await repos.worlds.get(WORLD_ID)
     assert updated is not None
@@ -248,17 +175,8 @@ async def test_list_world_trash_returns_only_deleted_worlds_owned_by_caller():
     deleted_own = World(id="w-deleted", owner_id=OWNER_ID, name="Deleted", deleted_at=datetime.now(UTC))
     live_own = World(id="w-live", owner_id=OWNER_ID, name="Live")
     deleted_other = World(id="w-other", owner_id=OTHER_USER_ID, name="Other", deleted_at=datetime.now(UTC))
-    repos = Repositories(
-        users=FakeUserRepository(),
-        worlds=FakeWorldRepository(worlds_by_id={world.id: world for world in (deleted_own, live_own, deleted_other)}),
-        entities=FakeEntityRepository(),
-        permissions=FakeEntityPermissionRepository(),
-        invites=FakeWorldInviteRepository(),
-        sessions=FakeSessionRepository(),
-        password_resets=FakePasswordResetRepository(),
-        registration_confirmations=FakeRegistrationConfirmationRepository(),
-        runtime_settings=FakeRuntimeSettingsRepository(),
-    )
+    worlds = FakeWorldRepository(worlds_by_id={world.id: world for world in (deleted_own, live_own, deleted_other)})
+    repos = make_repos(worlds=worlds)
 
     result = await list_world_trash(repos, OWNER_ID)
 

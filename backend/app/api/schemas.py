@@ -18,7 +18,6 @@ from app.domain.models import (
     Map,
     MapPin,
     PermissionLevel,
-    RuntimeSettings,
     UserId,
     UserRole,
     UserStatus,
@@ -49,10 +48,8 @@ class CreateWorldRequest(BaseModel):
     pic: str | None = None
 
 
-class UpdateWorldRequest(BaseModel):
-    name: str
-    description: str | None = None
-    pic: str | None = None
+class UpdateWorldRequest(CreateWorldRequest):
+    """Same shape as `CreateWorldRequest`; kept as a separate name for clarity at the update route."""
 
 
 class WorldOut(World):
@@ -204,28 +201,6 @@ class RegisterRequest(BaseModel):
 
 class ConfirmRegistrationRequest(BaseModel):
     token: str
-
-
-class RuntimeSettingsOut(BaseModel):
-    registration_enabled: bool
-    password_reset_enabled: bool
-
-    @classmethod
-    def from_settings(cls, settings: RuntimeSettings) -> RuntimeSettingsOut:
-        return cls(
-            registration_enabled=settings.registration_enabled,
-            password_reset_enabled=settings.password_reset_enabled,
-        )
-
-
-class RuntimeSettingsUpdate(BaseModel):
-    registration_enabled: bool
-    password_reset_enabled: bool
-
-    def to_settings(self) -> RuntimeSettings:
-        return RuntimeSettings(
-            registration_enabled=self.registration_enabled, password_reset_enabled=self.password_reset_enabled
-        )
 
 
 class UserListOut(BaseModel):

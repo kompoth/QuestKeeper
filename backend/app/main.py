@@ -17,7 +17,7 @@ from app.api.routers.sharing import invites_router, permissions_router
 from app.api.routers.worlds import router as worlds_router
 from app.composition import build_repositories
 from app.config import get_settings
-from app.services.access import EmailAlreadyRegisteredError
+from app.services.errors import EmailAlreadyRegisteredError
 from app.services.seed import ensure_seed_admin
 
 

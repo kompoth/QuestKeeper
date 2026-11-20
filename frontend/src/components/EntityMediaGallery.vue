@@ -23,7 +23,7 @@
       </v-card>
     </div>
 
-    <v-snackbar v-model="snackbar" color="error">{{ snackbarText }}</v-snackbar>
+    <v-snackbar v-model="snackbar" :color="snackbarColor">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 
@@ -32,6 +32,7 @@
   import { onMounted, ref, watch } from 'vue'
   import { apiUrl } from '@/api/client'
   import { deleteMedia, listMedia } from '@/api/media'
+  import { useSnackbar } from '@/composables/useSnackbar'
 
   const props = defineProps<{
     worldId: string
@@ -41,8 +42,7 @@
   const items = ref<MediaItem[]>([])
   const loading = ref(false)
 
-  const snackbar = ref(false)
-  const snackbarText = ref('')
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   async function refresh () {
     loading.value = true
@@ -61,8 +61,7 @@
       await deleteMedia(props.worldId, props.entityId, item.fileId)
       items.value = items.value.filter(candidate => candidate.fileId !== item.fileId)
     } catch {
-      snackbarText.value = 'Failed to delete file'
-      snackbar.value = true
+      notify('Failed to delete file', 'error')
     }
   }
 </script>
