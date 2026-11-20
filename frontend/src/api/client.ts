@@ -1,6 +1,11 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 const CSRF_COOKIE_NAME = 'csrf_token'
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
+
+// For a value stored verbatim in content (e.g. a media reference) rather than fetched via apiFetch.
+export function apiUrl (path: string): string {
+  return `${BASE_URL}${path}`
+}
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 
 export class ApiError extends Error {

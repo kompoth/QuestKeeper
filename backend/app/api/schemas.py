@@ -81,6 +81,19 @@ class EntityOut(Entity):
         return cls(**entity.model_dump(), access=EntityAccessOut.from_access(access))
 
 
+class RequestMediaUploadRequest(BaseModel):
+    content_type: str
+    size: int
+
+
+class MediaUploadOut(BaseModel):
+    """A presigned POST policy for uploading directly to the object store, plus the new file_id."""
+
+    file_id: str
+    url: str
+    fields: dict[str, str]
+
+
 class CreateEntityRequest(BaseModel):
     name: str
     parent_id: EntityId | None = None

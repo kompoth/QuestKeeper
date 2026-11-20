@@ -25,6 +25,10 @@ def _set_required_env(monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "mysql+aiomysql://user:pass@localhost/test")
     monkeypatch.setenv("SMTP_HOST", "localhost")
     monkeypatch.setenv("SMTP_FROM_ADDRESS", "test@example.com")
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
+    monkeypatch.setenv("S3_ACCESS_KEY", "test")
+    monkeypatch.setenv("S3_SECRET_KEY", "test")
+    monkeypatch.setenv("S3_BUCKET", "test-bucket")
 
 
 def test_get_settings_reads_values_from_env(monkeypatch):
@@ -32,6 +36,10 @@ def test_get_settings_reads_values_from_env(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "mysql+aiomysql://user:pass@localhost/test")
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_FROM_ADDRESS", "noreply@example.com")
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://localhost:9000")
+    monkeypatch.setenv("S3_ACCESS_KEY", "test")
+    monkeypatch.setenv("S3_SECRET_KEY", "test")
+    monkeypatch.setenv("S3_BUCKET", "test-bucket")
 
     settings = get_settings()
 

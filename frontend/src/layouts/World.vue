@@ -172,7 +172,7 @@
     restoreEntity,
     restoreEntityBranch,
   } from '@/api/entities'
-  import { listInvites } from '@/api/invites'
+  import { acceptInvite, listInvites, listMyPendingInvites } from '@/api/invites'
   import { getEntityPermissions, grantPermission, revokePermission } from '@/api/permissions'
   import { getWorld } from '@/api/worlds'
   import EntityNav from '@/components/EntityNav.vue'
@@ -207,6 +207,15 @@
   const world = ref<World>()
   watchEffect(async () => {
     world.value = await getWorld(worldId.value)
+  })
+
+  // Opening a world auto-accepts a still-pending invite to it.
+  watchEffect(async () => {
+    const openedWorldId = worldId.value
+    const pendingInvites = await listMyPendingInvites()
+    if (pendingInvites.some(invite => invite.worldId === openedWorldId)) {
+      await acceptInvite(openedWorldId)
+    }
   })
   const appTitle = computed(() => world.value?.name ?? 'Questkeeper')
   const isOwner = computed(() => world.value !== undefined && world.value.ownerId === currentUser.value?.id)

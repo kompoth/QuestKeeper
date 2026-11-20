@@ -27,14 +27,25 @@
         </div>
       </v-toolbar>
 
+      <v-alert
+        v-if="uploadError"
+        class="mx-4 mt-2"
+        closable
+        type="error"
+        @click:close="uploadError = undefined"
+      >{{ uploadError }}</v-alert>
+
       <div class="entity-content flex-1-1-100 overflow-y-auto">
         <EntityMap v-if="entity.map" :map="entity.map" @open="openEntity" />
 
         <EntityArticle
           v-else
           :editable="articleEditable"
+          :entity-id="entity.id"
           :model-value="entity.article?.markdown ?? ''"
+          :world-id="worldId"
           @update:model-value="handleArticleChange"
+          @upload-error="uploadError = $event"
         />
       </div>
     </template>
@@ -68,6 +79,7 @@
 
   const entity = ref<Entity>()
   const entityPath = ref<Entity[]>([])
+  const uploadError = ref<string>()
   const articleEditable = computed(() => entityEditable.value && !entity.value?.deletedAt)
 
   const breadcrumbItems = computed(() => {

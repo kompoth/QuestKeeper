@@ -16,9 +16,11 @@ from app.services.access import (
     InvalidStatusTransitionError,
     InviteNotFoundError,
     InviteTokenNotFoundError,
+    MediaTooLargeError,
     PasswordResetTokenNotFoundError,
     PermissionDeniedError,
     RegistrationTokenNotFoundError,
+    UnsupportedMediaTypeError,
     UserNotFoundError,
     WorldNotFoundError,
 )
@@ -46,6 +48,14 @@ def _conflict(_request: Request, exc: Exception) -> JSONResponse:
 def _service_unavailable(_request: Request, exc: Exception) -> JSONResponse:
     logger.error("%s", exc, exc_info=exc)
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+def _payload_too_large(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=413, content={"detail": str(exc)})
+
+
+def _unsupported_media_type(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=415, content={"detail": str(exc)})
 
 
 _NOT_FOUND_EXCEPTIONS = (
@@ -76,3 +86,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     for exc_type in (EmailAlreadyRegisteredError, InvalidStatusTransitionError, EntityNotInTrashError):
         app.add_exception_handler(exc_type, _conflict)
     app.add_exception_handler(MailDeliveryError, _service_unavailable)
+    app.add_exception_handler(MediaTooLargeError, _payload_too_large)
+    app.add_exception_handler(UnsupportedMediaTypeError, _unsupported_media_type)

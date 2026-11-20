@@ -4,6 +4,7 @@ import secrets
 from collections.abc import Sequence
 
 from app.domain import permissions
+from app.domain.media import MediaStorage
 from app.domain.models import Article, Entity, EntityId, Map, UserId, WorldId
 from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
@@ -16,6 +17,7 @@ from app.services.access import (
     WorldNotFoundError,
     get_entity_access,
 )
+from app.services.media import entity_media_prefix, extract_media_file_id, media_key
 
 
 async def list_entities(
@@ -167,10 +169,18 @@ async def restore_entity_branch(repos: Repositories, user_id: UserId, world_id: 
     await repos.entities.restore_branch(world_id, entity_id, user_id)
 
 
-async def purge_entity(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
-    """Permanently deletes this entity and its entire descendant subtree - irreversible."""
+async def purge_entity(
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> None:
+    """Permanently deletes this entity and its entire descendant subtree - irreversible.
+
+    Also deletes every purged entity's media files - once their rows are gone, nothing else would
+    ever clean up the underlying objects.
+    """
     await _require_trashed_entity_with_delete_access(repos, user_id, world_id, entity_id)
-    await repos.entities.purge(world_id, entity_id)
+    purged_ids = await repos.entities.purge(world_id, entity_id)
+    for purged_id in purged_ids:
+        await storage.delete_prefix(prefix=entity_media_prefix(world_id, purged_id))
 
 
 async def set_article(
@@ -191,17 +201,41 @@ async def clear_article(repos: Repositories, user_id: UserId, world_id: WorldId,
     await repos.entities.clear_article(entity_id, user_id)
 
 
-async def set_map(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId, map_: Map) -> None:
+async def _delete_old_map_image(
+    repos: Repositories, storage: MediaStorage, world_id: WorldId, entity_id: EntityId, new_pic: str | None
+) -> None:
+    """A `Map` holds exactly one image - replacing or clearing it deletes the old file.
+
+    No-ops if there was no previous map, or its `pic` isn't one of our own media references (e.g.
+    unset/placeholder data) - nothing to delete in either case.
+    """
+    existing = await repos.entities.get(world_id, entity_id)
+    old_pic = existing.map.pic if existing and existing.map else None
+    if not old_pic or old_pic == new_pic:
+        return
+
+    old_file_id = extract_media_file_id(old_pic, world_id, entity_id)
+    if old_file_id:
+        await storage.delete_prefix(prefix=media_key(world_id, entity_id, old_file_id))
+
+
+async def set_map(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id/map_ distinct params, not data fields
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId, map_: Map
+) -> None:
     access = await get_entity_access(repos, user_id, world_id, entity_id)
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
+    await _delete_old_map_image(repos, storage, world_id, entity_id, map_.pic)
     await repos.entities.set_map(entity_id, map_, user_id)
 
 
-async def clear_map(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
+async def clear_map(
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> None:
     access = await get_entity_access(repos, user_id, world_id, entity_id)
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
+    await _delete_old_map_image(repos, storage, world_id, entity_id, new_pic=None)
     await repos.entities.clear_map(entity_id, user_id)

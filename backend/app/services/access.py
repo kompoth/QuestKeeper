@@ -68,6 +68,14 @@ class EntityNotInTrashError(Exception):
     """Raised when restore/restore-branch/purge targets an entity that exists but isn't soft-deleted."""
 
 
+class UnsupportedMediaTypeError(Exception):
+    """Raised when a media upload's declared content-type isn't on the image allow-list."""
+
+
+class MediaTooLargeError(Exception):
+    """Raised when a media upload's declared size exceeds the configured cap."""
+
+
 async def get_entity_access(
     repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False
 ) -> EntityAccess:

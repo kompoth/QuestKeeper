@@ -29,6 +29,7 @@ from app.services.entities import (
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
+    FakeMediaStorage,
     FakePasswordResetRepository,
     FakeRegistrationConfirmationRepository,
     FakeRuntimeSettingsRepository,
@@ -322,7 +323,7 @@ async def test_set_map_persists_map_with_write_access():
     repos = make_repos(entity=entity, world=world)
     map_ = Map(pic="map.png", pins={(1.0, 2.0): MapPin(entity_id="pinned", x=1, y=2)})
 
-    await set_map(repos, USER_ID, WORLD_ID, ENTITY_ID, map_)
+    await set_map(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID, map_)
 
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
@@ -334,7 +335,7 @@ async def test_clear_map_removes_map_with_write_access():
     world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
     repos = make_repos(entity=entity, world=world)
 
-    await clear_map(repos, USER_ID, WORLD_ID, ENTITY_ID)
+    await clear_map(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID)
 
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
@@ -463,7 +464,7 @@ async def test_purge_entity_removes_entity_and_descendants():
         grants={ENTITY_ID: PermissionLevel.WRITE, PARENT_ID: PermissionLevel.WRITE},
     )
 
-    await purge_entity(repos, USER_ID, WORLD_ID, ENTITY_ID)
+    await purge_entity(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID)
 
     assert (await repos.entities.get(WORLD_ID, ENTITY_ID)) is None
     assert (await repos.entities.get(WORLD_ID, "child1")) is None

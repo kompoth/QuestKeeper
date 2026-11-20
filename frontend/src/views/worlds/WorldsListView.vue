@@ -22,6 +22,18 @@
           >
             {{ world.ownerName }}
           </v-chip>
+
+          <v-chip
+            v-if="hasPendingInvite(world)"
+            class="position-absolute"
+            color="amber"
+            prepend-icon="mdi-alert-decagram-outline"
+            size="small"
+            style="top: 8px; right: 8px;"
+            variant="flat"
+          >
+            New
+          </v-chip>
         </v-sheet>
 
         <v-card-title>{{ world.name }}</v-card-title>
@@ -48,15 +60,21 @@
 <script lang="ts" setup>
   import type { World } from '@/types/world'
   import { computed, onMounted, ref } from 'vue'
+  import { listMyPendingInvites } from '@/api/invites'
   import { createWorld, listWorlds } from '@/api/worlds'
   import { useAuth } from '@/composables/useAuth'
 
   const { currentUser } = useAuth()
 
   const worlds = ref<World[]>([])
+  const pendingInviteWorldIds = ref(new Set<string>())
 
   function isOwner (world: World): boolean {
     return world.ownerId === currentUser.value?.id
+  }
+
+  function hasPendingInvite (world: World): boolean {
+    return pendingInviteWorldIds.value.has(world.id)
   }
 
   const sortedWorlds = computed(() => [
@@ -68,9 +86,10 @@
 
   async function refreshWorlds () {
     const requestId = ++worldsRequestId
-    const result = await listWorlds()
+    const [result, pendingInvites] = await Promise.all([listWorlds(), listMyPendingInvites()])
     if (requestId !== worldsRequestId) return // a newer refresh already started, discard this stale result
     worlds.value = result
+    pendingInviteWorldIds.value = new Set(pendingInvites.map(invite => invite.worldId))
   }
 
   onMounted(refreshWorlds)

@@ -12,6 +12,7 @@ from app.api.errors import register_exception_handlers
 from app.api.routers.admin import router as admin_router
 from app.api.routers.auth import router as auth_router
 from app.api.routers.entities import router as entities_router
+from app.api.routers.media import router as media_router
 from app.api.routers.sharing import invites_router, permissions_router
 from app.api.routers.worlds import router as worlds_router
 from app.composition import build_repositories
@@ -61,5 +62,6 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(worlds_router)
 app.include_router(entities_router)
+app.include_router(media_router)
 app.include_router(permissions_router)
 app.include_router(invites_router)

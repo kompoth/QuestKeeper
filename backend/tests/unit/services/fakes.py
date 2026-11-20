@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from app.domain.media import UploadPolicy
 from app.domain.models import (
     Article,
     Entity,
@@ -211,9 +212,11 @@ class FakeEntityRepository:
         for id_to_restore in ids_to_restore:
             self._update(id_to_restore, actor_id, deleted_at=None)
 
-    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:  # noqa: ARG002
-        for subtree_id in self._subtree_ids(entity_id):
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:  # noqa: ARG002
+        subtree_ids = list(self._subtree_ids(entity_id))
+        for subtree_id in subtree_ids:
             self.entities_by_id.pop(subtree_id, None)
+        return subtree_ids
 
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:
         self._update(entity_id, actor_id, article=article)
@@ -382,3 +385,26 @@ class FakeMailer:
 
     async def send_registration_confirmation(self, *, to_email: str, confirm_url: str) -> None:
         self.registration_confirmations.append((to_email, confirm_url))
+
+
+@dataclass
+class FakeMediaStorage:
+    created_policies: list[str] = field(default_factory=list)  # keys an upload policy was minted for
+    deleted_prefixes: list[str] = field(default_factory=list)
+
+    async def create_upload_policy(
+        self,
+        *,
+        key: str,
+        content_type: str,
+        max_bytes: int,  # noqa: ARG002
+        ttl_seconds: int,  # noqa: ARG002
+    ) -> UploadPolicy:
+        self.created_policies.append(key)
+        return UploadPolicy(url="https://storage.test/upload", fields={"key": key, "Content-Type": content_type})
+
+    async def generate_read_url(self, *, key: str, ttl_seconds: int) -> str:  # noqa: ARG002
+        return f"https://storage.test/{key}"
+
+    async def delete_prefix(self, *, prefix: str) -> None:
+        self.deleted_prefixes.append(prefix)

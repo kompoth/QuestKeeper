@@ -1,23 +1,58 @@
 <template>
-  <v-navigation-drawer v-if="$slots.sidebar" v-model="drawer" :temporary="mobile" width="320">
-    <template #prepend>
+  <v-app-bar v-if="mobile && $slots.sidebar">
+    <v-app-bar-nav-icon @click="drawer = !drawer" />
+
+    <div class="flex-grow-1 text-truncate" style="min-width: 0;">
+      <div class="text-subtitle-1 text-truncate">{{ appTitle }}</div>
+      <div v-if="appSubtitle" class="text-caption text-medium-emphasis text-truncate">{{ appSubtitle }}</div>
+    </div>
+
+    <v-btn
+      v-if="route.path !== '/w'"
+      class="flex-shrink-0"
+      prepend-icon="mdi-chevron-left"
+      to="/w"
+      variant="text"
+    >
+      Back to worlds
+    </v-btn>
+
+    <AccountMenu @logout="emit('logout')">
+      <template #activator="{ props: menuProps }">
+        <v-btn icon variant="text" v-bind="menuProps">
+          <IdenticonAvatar v-if="currentUser" :seed="currentUser.email" />
+        </v-btn>
+      </template>
+    </AccountMenu>
+  </v-app-bar>
+
+  <v-navigation-drawer
+    v-if="$slots.sidebar"
+    v-model="drawer"
+    :location="mobile ? 'top' : undefined"
+    :temporary="mobile"
+    :width="mobile ? '70%' : 320"
+  >
+    <template v-if="!mobile" #prepend>
       <div class="d-flex align-center ga-2 pa-3">
         <Logo :size="40" />
 
-        <div>
-          <div class="text-h6">{{ appTitle }}</div>
-          <div v-if="appSubtitle" class="text-caption text-medium-emphasis">{{ appSubtitle }}</div>
+        <div style="min-width: 0;">
+          <div class="text-h6 text-truncate">{{ appTitle }}</div>
+          <div v-if="appSubtitle" class="text-caption text-medium-emphasis text-truncate">{{ appSubtitle }}</div>
         </div>
 
         <v-spacer />
 
         <v-btn
           v-if="route.path !== '/w'"
-          aria-label="Back to worlds"
-          icon="mdi-chevron-left"
+          class="flex-shrink-0"
+          prepend-icon="mdi-chevron-left"
           to="/w"
           variant="text"
-        />
+        >
+          Back to worlds
+        </v-btn>
       </div>
 
       <v-divider />
@@ -25,7 +60,7 @@
 
     <slot name="sidebar" />
 
-    <template #append>
+    <template v-if="!mobile" #append>
       <v-divider />
 
       <div class="d-flex align-center ga-0 px-3 py-2">
@@ -43,40 +78,14 @@
 
         <v-spacer />
 
-        <v-menu>
+        <AccountMenu @logout="emit('logout')">
           <template #activator="{ props: menuProps }">
             <v-btn icon="mdi-dots-vertical" variant="text" v-bind="menuProps" />
           </template>
-
-          <v-list density="compact">
-            <v-list-item
-              v-if="currentUser?.role === 'admin'"
-              prepend-icon="mdi-wizard-hat"
-              title="Admin panel"
-              to="/admin"
-            />
-
-            <v-list-item
-              :prepend-icon="theme.global.current.value.dark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-              :title="theme.global.current.value.dark ? 'Light mode' : 'Dark mode'"
-              @click="toggle"
-            />
-
-            <v-list-item prepend-icon="mdi-logout" title="Log out" @click="emit('logout')" />
-          </v-list>
-        </v-menu>
+        </AccountMenu>
       </div>
     </template>
   </v-navigation-drawer>
-
-  <v-app-bar v-if="mobile && $slots.sidebar">
-    <v-app-bar-nav-icon @click="drawer = !drawer" />
-
-    <v-spacer />
-
-    <ThemeToggle />
-    <v-btn aria-label="Log out" icon="mdi-logout" variant="text" @click="emit('logout')" />
-  </v-app-bar>
 </template>
 
 <script lang="ts" setup>
@@ -84,10 +93,10 @@
   import { useRoute } from 'vue-router'
   import { useDisplay } from 'vuetify'
   import { useAuth } from '@/composables/useAuth'
-  import { useThemeMode } from '@/composables/useThemeMode'
+  import AccountMenu from './AccountMenu.vue'
+  import IdenticonAvatar from './IdenticonAvatar.vue'
   import Logo from './Logo.vue'
   import MemberItem from './MemberItem.vue'
-  import ThemeToggle from './ThemeToggle.vue'
 
   defineProps<{
     appTitle: string
@@ -99,7 +108,6 @@
   }>()
 
   const { currentUser } = useAuth()
-  const { theme, toggle } = useThemeMode()
 
   const route = useRoute()
 

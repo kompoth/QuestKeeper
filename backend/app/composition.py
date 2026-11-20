@@ -19,8 +19,10 @@ from app.adapters.db.repositories import (
     SqlWorldRepository,
 )
 from app.adapters.email import SmtpMailer
+from app.adapters.media import S3MediaStorage
 from app.config import get_settings
 from app.domain.mail import Mailer
+from app.domain.media import MediaStorage
 from app.domain.repositories import Repositories
 
 
@@ -48,4 +50,15 @@ def build_mailer() -> Mailer:
         password=settings.smtp_password,
         use_tls=settings.smtp_use_tls,
         from_address=settings.smtp_from_address,
+    )
+
+
+def build_media_storage() -> MediaStorage:
+    settings = get_settings()
+    return S3MediaStorage(
+        endpoint_url=settings.s3_endpoint_url,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        bucket=settings.s3_bucket,
+        region=settings.s3_region,
     )

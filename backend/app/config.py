@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     seed_admin_email: str | None = None
     seed_admin_password: str | None = None
 
+    # S3-compatible (MinIO in dev, real AWS S3 in prod) object storage for entity media.
+    s3_endpoint_url: str
+    s3_access_key: str
+    s3_secret_key: str
+    s3_bucket: str
+    s3_region: str = "us-east-1"
+
+    media_max_upload_bytes: int = 10 * 1024 * 1024
+    # Short on purpose: a fresh signature is minted on every request, so this only bounds how long a
+    # copied/leaked URL stays usable - it doesn't need to survive longer than one page load.
+    media_presign_ttl_seconds: int = 60
+
 
 def get_settings() -> Settings:
     """Returns the process-wide cached `Settings`, built once from the environment.

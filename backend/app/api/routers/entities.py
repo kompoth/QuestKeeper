@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.dependencies import CurrentUser, Repos, require_csrf
+from app.api.dependencies import CurrentUser, MediaStorageDep, Repos, require_csrf
 from app.api.schemas import (
     CreateEntityRequest,
     EntityGrantOut,
@@ -99,8 +99,10 @@ async def restore_branch(world_id: WorldId, entity_id: EntityId, user: CurrentUs
 
 
 @router.delete("/{entity_id}/purge", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
-async def purge(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> None:
-    await purge_entity(repos, user.id, world_id, entity_id)
+async def purge(
+    world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
+) -> None:
+    await purge_entity(repos, storage, user.id, world_id, entity_id)
 
 
 @router.put("/{entity_id}/article", dependencies=[Depends(require_csrf)])
@@ -118,16 +120,23 @@ async def delete_article(world_id: WorldId, entity_id: EntityId, user: CurrentUs
 
 
 @router.put("/{entity_id}/map", dependencies=[Depends(require_csrf)])
-async def put_map(
-    world_id: WorldId, entity_id: EntityId, body: SetMapRequest, user: CurrentUser, repos: Repos
+async def put_map(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
+    world_id: WorldId,
+    entity_id: EntityId,
+    body: SetMapRequest,
+    user: CurrentUser,
+    repos: Repos,
+    storage: MediaStorageDep,
 ) -> EntityOut:
-    await set_map(repos, user.id, world_id, entity_id, body.to_map())
+    await set_map(repos, storage, user.id, world_id, entity_id, body.to_map())
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
 @router.delete("/{entity_id}/map", dependencies=[Depends(require_csrf)])
-async def delete_map(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> EntityOut:
-    await clear_map(repos, user.id, world_id, entity_id)
+async def delete_map(
+    world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
+) -> EntityOut:
+    await clear_map(repos, storage, user.id, world_id, entity_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 

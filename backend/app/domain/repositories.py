@@ -138,9 +138,14 @@ class EntityRepository(Protocol):
         still-tombstoned ancestors needed to make it reachable again in the live tree."""
         ...
 
-    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
         """Permanently deletes the entity and its entire descendant subtree (tombstoned or not), along
-        with their article/map facets, map pins, and permission grants."""
+        with their article/map facets, map pins, and permission grants.
+
+        Returns every purged id (the entity plus its descendants), so the caller can also clean up
+        any external resources (e.g. media) keyed by those ids - nothing else ever will, once the
+        rows are gone.
+        """
         ...
 
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:

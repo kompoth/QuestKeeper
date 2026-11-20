@@ -3,3 +3,7 @@ export interface InviteSummary {
   inviteeName: string | null
   accepted: boolean
 }
+
+export interface PendingInvite {
+  worldId: string
+}

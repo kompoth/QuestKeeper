@@ -6,18 +6,23 @@
   import { Crepe } from '@milkdown/crepe'
   import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useDisplay } from 'vuetify'
+  import { apiUrl } from '@/api/client'
+  import { uploadMedia } from '@/api/media'
   import '@milkdown/crepe/theme/common/style.css'
   import '@milkdown/crepe/theme/frame.css'
 
   const props = withDefaults(defineProps<{
     modelValue: string
     editable?: boolean
+    worldId: string
+    entityId: string
   }>(), {
     editable: false,
   })
 
   const emit = defineEmits<{
     'update:modelValue': [value: string]
+    'upload-error': [message: string]
   }>()
 
   const rootRef = ref<HTMLElement>()
@@ -36,6 +41,18 @@
     }
   }
 
+  // Persisted markdown keeps the bare backend-relative path `uploadMedia()` returns (portable,
+  // never expires) - `proxyDomURL` only affects what's rendered in the editor, resolving that path
+  // against the API's actual origin for display, without touching the saved markdown.
+  async function handleImageUpload (file: File): Promise<string> {
+    try {
+      return await uploadMedia(props.worldId, props.entityId, file)
+    } catch {
+      emit('upload-error', 'Image upload failed')
+      throw new Error('Image upload failed')
+    }
+  }
+
   async function createEditor (defaultValue: string) {
     if (!rootRef.value) return
 
@@ -43,6 +60,12 @@
       root: rootRef.value,
       defaultValue,
       features: featuresFor(mobile.value),
+      featureConfigs: {
+        [Crepe.Feature.ImageBlock]: {
+          onUpload: handleImageUpload,
+          proxyDomURL: (url: string) => url.startsWith('/') ? apiUrl(url) : url,
+        },
+      },
     })
 
     crepe.on(listener => {
@@ -108,5 +131,11 @@
 /* Crepe's base theme hardcodes 60px/120px regardless of viewport - way too wide a gutter on a phone. */
 .article-mobile .milkdown .ProseMirror {
   padding: 24px 16px;
+}
+
+/* Crepe's image-block caption input ignores the editor's readonly state (a library gap - every
+   other image-block interaction checks it, this one doesn't), so it's disabled here via CSS. */
+.milkdown .ProseMirror[contenteditable='false'] .caption-input {
+  pointer-events: none;
 }
 </style>

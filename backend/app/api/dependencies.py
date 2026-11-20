@@ -8,9 +8,10 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.adapters.db.session import create_engine, create_session_factory
-from app.composition import build_mailer, build_repositories
+from app.composition import build_mailer, build_media_storage, build_repositories
 from app.config import Settings, get_settings
 from app.domain.mail import Mailer
+from app.domain.media import MediaStorage
 from app.domain.models import User, UserRole
 from app.domain.repositories import Repositories
 from app.services import auth
@@ -43,8 +44,13 @@ def get_mailer() -> Mailer:
     return build_mailer()
 
 
+def get_media_storage() -> MediaStorage:
+    return build_media_storage()
+
+
 Repos = Annotated[Repositories, Depends(get_repositories)]
 MailerDep = Annotated[Mailer, Depends(get_mailer)]
+MediaStorageDep = Annotated[MediaStorage, Depends(get_media_storage)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 SessionToken = Annotated[str, Depends(auth.cookie_scheme)]
 

@@ -452,7 +452,7 @@ class SqlEntityRepository:
             .values(deleted_at=None, updated_at=now, updated_by=actor_id)
         )
 
-    async def purge(self, world_id: WorldId, entity_id: EntityId) -> None:
+    async def purge(self, world_id: WorldId, entity_id: EntityId) -> Sequence[EntityId]:
         """Permanently deletes `entity_id` and its entire descendant subtree (tombstoned or not),
         found the same way `delete()` finds its subtree - ignoring deleted_at, so purging an ancestor
         always takes its whole branch with it, even a part of it that was separately restored.
@@ -476,6 +476,8 @@ class SqlEntityRepository:
         # deleted before their parent - reversing BFS discovery order guarantees that at any depth.
         for child_first_id in reversed(subtree_ids):
             await self._session.execute(delete(EntityRow).where(EntityRow.id == child_first_id))
+
+        return subtree_ids
 
     async def set_article(self, entity_id: EntityId, article: Article, actor_id: UserId) -> None:
         row = await self._session.get(ArticleRow, entity_id)
