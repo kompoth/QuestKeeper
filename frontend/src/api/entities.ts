@@ -1,4 +1,4 @@
-import type { Entity } from '@/types/entity'
+import type { Entity, MapPin } from '@/types/entity'
 import { ApiError, apiFetch } from '@/api/client'
 
 interface MapPinDto {
@@ -109,6 +109,14 @@ export async function setArticle (worldId: string, entityId: string, markdown: s
   const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/article`, {
     method: 'PUT',
     body: { markdown },
+  })
+  return toEntity(dto)
+}
+
+export async function setMap (worldId: string, entityId: string, pic: string, pins: MapPin[] = []): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/map`, {
+    method: 'PUT',
+    body: { pic, pins: pins.map(pin => ({ entity_id: pin.entityId, x: pin.x, y: pin.y })) },
   })
   return toEntity(dto)
 }

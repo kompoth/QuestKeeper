@@ -24,6 +24,18 @@
             <v-icon :icon="entityEditable ? 'mdi-pencil' : 'mdi-text-long'" start />
             {{ entityEditable ? 'Edit mode' : 'Reading mode' }}
           </v-chip>
+
+          <v-btn
+            v-if="articleEditable && !entity.map"
+            color="primary"
+            :disabled="!articleDirty"
+            :loading="savingArticle"
+            prepend-icon="mdi-content-save"
+            variant="flat"
+            @click="handleSaveArticle"
+          >
+            Save
+          </v-btn>
         </div>
       </v-toolbar>
 
@@ -43,17 +55,10 @@
             class="pa-4"
             :editable="articleEditable"
             :entity-id="entity.id"
-            :model-value="entity.article?.markdown ?? ''"
+            :model-value="savedMarkdown"
             :world-id="worldId"
             @update:model-value="handleArticleChange"
             @upload-error="uploadError = $event"
-          />
-
-          <EntityMediaGallery
-            v-if="articleEditable"
-            class="px-4 pb-4"
-            :entity-id="entity.id"
-            :world-id="worldId"
           />
         </template>
       </div>
@@ -63,15 +68,13 @@
 
 <script lang="ts" setup>
   import type { Entity } from '@/types/entity'
-  import { computed, inject, onBeforeUnmount, ref, watchEffect } from 'vue'
-  import { useRoute, useRouter } from 'vue-router'
+  import { computed, inject, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
+  import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
   import { getEntity, setArticle } from '@/api/entities'
   import EntityArticle from '@/components/EntityArticle.vue'
   import EntityMap from '@/components/EntityMap.vue'
-  import EntityMediaGallery from '@/components/EntityMediaGallery.vue'
+  import { useConfirmDialog } from '@/composables/useConfirmDialog'
   import { entityTrashVersionKey } from '@/utils/nav'
-
-  const ARTICLE_SAVE_DEBOUNCE_MS = 500
 
   interface BreadcrumbItem {
     title: string
@@ -81,6 +84,7 @@
 
   const route = useRoute()
   const router = useRouter()
+  const { confirmDialog } = useConfirmDialog()
 
   const worldId = computed(() => route.params.worldId as string)
 
@@ -91,6 +95,11 @@
   const entityPath = ref<Entity[]>([])
   const uploadError = ref<string>()
   const articleEditable = computed(() => entityEditable.value && !entity.value?.deletedAt)
+
+  const savedMarkdown = ref('')
+  const draftMarkdown = ref('')
+  const savingArticle = ref(false)
+  const articleDirty = computed(() => draftMarkdown.value !== savedMarkdown.value)
 
   const breadcrumbItems = computed(() => {
     const items: BreadcrumbItem[] = []
@@ -119,8 +128,14 @@
   }
 
   async function refreshEntity () {
-    entity.value = await getEntity(worldId.value, route.params.entityId as string)
-    entityPath.value = entity.value ? await getEntityPath(entity.value) : []
+    const fetchedEntity = await getEntity(worldId.value, route.params.entityId as string)
+    // Set together, synchronously, so EntityArticle never mounts with a stale/empty model-value
+    // between `entity` updating and `savedMarkdown` catching up (no `await` in between).
+    entity.value = fetchedEntity
+    savedMarkdown.value = fetchedEntity?.article?.markdown ?? ''
+    draftMarkdown.value = savedMarkdown.value
+
+    entityPath.value = fetchedEntity ? await getEntityPath(fetchedEntity) : []
   }
 
   watchEffect(() => {
@@ -132,21 +147,42 @@
     router.push(`/w/${worldId.value}/e/${entityId}`)
   }
 
-  let articleSaveTimeout: ReturnType<typeof setTimeout> | undefined
-
   function handleArticleChange (markdown: string) {
-    if (!entity.value) return
-    const entityId = entity.value.id
-    const currentWorldId = worldId.value
-    clearTimeout(articleSaveTimeout)
-    articleSaveTimeout = setTimeout(() => {
-      setArticle(currentWorldId, entityId, markdown)
-    }, ARTICLE_SAVE_DEBOUNCE_MS)
+    draftMarkdown.value = markdown
   }
 
-  onBeforeUnmount(() => {
-    clearTimeout(articleSaveTimeout)
-  })
+  async function handleSaveArticle () {
+    if (!entity.value) return
+    savingArticle.value = true
+    try {
+      await setArticle(worldId.value, entity.value.id, draftMarkdown.value)
+      savedMarkdown.value = draftMarkdown.value
+    } finally {
+      savingArticle.value = false
+    }
+  }
+
+  async function confirmDiscardIfDirty (): Promise<boolean> {
+    if (!articleDirty.value) return true
+    return await confirmDialog({
+      title: 'Unsaved changes',
+      message: 'You have unsaved changes. Leave without saving?',
+      confirmText: 'Leave',
+      cancelText: 'Stay',
+    })
+  }
+
+  onBeforeRouteUpdate(() => confirmDiscardIfDirty())
+  onBeforeRouteLeave(() => confirmDiscardIfDirty())
+
+  function handleBeforeUnload (event: BeforeUnloadEvent) {
+    if (articleDirty.value) {
+      event.preventDefault()
+    }
+  }
+
+  onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
+  onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
 </script>
 
 <style scoped>

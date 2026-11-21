@@ -149,7 +149,7 @@ async def test_real_store_rejects_upload_with_a_different_content_type_than_decl
     assert response.status_code == 400
 
 
-async def test_list_media_returns_uploaded_files(async_client, db_session):
+async def test_saving_an_article_sweeps_an_image_removed_from_it(async_client, db_session):
     await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
@@ -160,16 +160,27 @@ async def test_list_media_returns_uploaded_files(async_client, db_session):
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
+    pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
+    signed_get_url = (await async_client.get(pic_path)).headers["location"]
 
-    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
+    await async_client.put(
+        f"/worlds/{world_id}/entities/{entity_id}/article",
+        json={"markdown": f"![]({pic_path})"},
+        headers=csrf_headers(async_client),
+    )
+    save_response = await async_client.put(
+        f"/worlds/{world_id}/entities/{entity_id}/article",
+        json={"markdown": "# No images here anymore"},
+        headers=csrf_headers(async_client),
+    )
+    assert save_response.status_code == 200
 
-    assert response.status_code == 200
-    assert response.json() == [
-        {"file_id": mint["file_id"], "path": f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"}
-    ]
+    async with httpx.AsyncClient() as store_client:
+        final_response = await store_client.get(signed_get_url)
+    assert final_response.status_code == 404
 
 
-async def test_delete_media_permanently_removes_the_file_from_the_real_store(async_client, db_session):
+async def test_saving_an_article_sweeps_a_file_uploaded_but_never_inserted(async_client, db_session):
     await login(async_client, db_session)
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
@@ -184,17 +195,40 @@ async def test_delete_media_permanently_removes_the_file_from_the_real_store(asy
         await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     ).headers["location"]
 
-    delete_response = await async_client.delete(
-        f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}", headers=csrf_headers(async_client)
+    await async_client.put(
+        f"/worlds/{world_id}/entities/{entity_id}/article",
+        json={"markdown": "# Never referenced the upload above"},
+        headers=csrf_headers(async_client),
     )
-    assert delete_response.status_code == 204
-
-    list_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media")
-    assert list_response.json() == []
 
     async with httpx.AsyncClient() as store_client:
         final_response = await store_client.get(signed_get_url)
     assert final_response.status_code == 404
+
+
+async def test_saving_an_article_keeps_an_image_still_referenced(async_client, db_session):
+    await login(async_client, db_session)
+    world_id, entity_id = await _create_world_and_entity(async_client)
+    mint = (
+        await async_client.post(
+            f"/worlds/{world_id}/entities/{entity_id}/media",
+            json={"content_type": "image/png", "size": 12},
+            headers=csrf_headers(async_client),
+        )
+    ).json()
+    await _upload_real_bytes(mint, b"hello-world!")
+    pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
+    signed_get_url = (await async_client.get(pic_path)).headers["location"]
+
+    await async_client.put(
+        f"/worlds/{world_id}/entities/{entity_id}/article",
+        json={"markdown": f"# Still here\n\n![]({pic_path})"},
+        headers=csrf_headers(async_client),
+    )
+
+    async with httpx.AsyncClient() as store_client:
+        final_response = await store_client.get(signed_get_url)
+    assert final_response.status_code == 200
 
 
 async def test_purge_deletes_the_entitys_media_from_the_real_store(async_client, db_session):

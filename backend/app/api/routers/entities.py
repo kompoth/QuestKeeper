@@ -107,16 +107,23 @@ async def purge(
 
 
 @router.put("/{entity_id}/article")
-async def put_article(
-    world_id: WorldId, entity_id: EntityId, body: SetArticleRequest, user: CurrentUser, repos: Repos
+async def put_article(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
+    world_id: WorldId,
+    entity_id: EntityId,
+    body: SetArticleRequest,
+    user: CurrentUser,
+    repos: Repos,
+    storage: MediaStorageDep,
 ) -> EntityOut:
-    await set_article(repos, user.id, world_id, entity_id, body.markdown)
+    await set_article(repos, storage, user.id, world_id, entity_id, body.markdown)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
 @router.delete("/{entity_id}/article")
-async def delete_article(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> EntityOut:
-    await clear_article(repos, user.id, world_id, entity_id)
+async def delete_article(
+    world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
+) -> EntityOut:
+    await clear_article(repos, storage, user.id, world_id, entity_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 

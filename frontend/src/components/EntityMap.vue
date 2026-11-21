@@ -12,7 +12,7 @@
         alt=""
         class="map-image"
         draggable="false"
-        :src="map.pic"
+        :src="apiUrl(map.pic)"
         @load="onImageLoad"
       >
 
@@ -43,6 +43,7 @@
 <script lang="ts" setup>
   import type { EntityMapContent } from '@/types/entity'
   import { onBeforeUnmount, onMounted, ref } from 'vue'
+  import { apiUrl } from '@/api/client'
 
   defineProps<{
     map: EntityMapContent

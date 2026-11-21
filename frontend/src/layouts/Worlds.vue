@@ -4,7 +4,7 @@
       <v-list density="compact" nav>
         <v-list-item exact prepend-icon="mdi-earth" title="Worlds" to="/w" />
         <v-list-item prepend-icon="mdi-delete-restore" title="Trash" to="/w/trash" />
-        <v-list-item prepend-icon="mdi-account-cog" title="My Account" to="/w/account" />
+        <v-list-item prepend-icon="mdi-account-cog" title="My Account" to="/account" />
       </v-list>
     </template>
   </NavBar>

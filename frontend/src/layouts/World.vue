@@ -4,6 +4,16 @@
       <SidebarTabs :tabs="sidebarTabs">
         <template #entities>
           <EntityNav :items="navItems" />
+
+          <div v-if="isOwner" class="d-flex ga-2 pa-2">
+            <v-btn class="flex-1-1-0" prepend-icon="mdi-note-plus-outline" variant="tonal" @click="handleAddArticle()">
+              Add article
+            </v-btn>
+
+            <v-btn class="flex-1-1-0" prepend-icon="mdi-map-plus" variant="tonal" @click="handleAddMap()">
+              Add map
+            </v-btn>
+          </div>
         </template>
 
         <template #trash>
@@ -147,6 +157,16 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <input
+    ref="mapFileInput"
+    accept="image/png,image/jpeg,image/webp,image/gif"
+    hidden
+    type="file"
+    @change="handleMapFileSelected"
+  >
+
+  <v-snackbar v-model="snackbar" :color="snackbarColor">{{ snackbarText }}</v-snackbar>
 </template>
 
 <script lang="ts" setup>
@@ -169,8 +189,10 @@
     renameEntity,
     restoreEntity,
     restoreEntityBranch,
+    setMap,
   } from '@/api/entities'
   import { acceptInvite, listInvites, listMyPendingInvites } from '@/api/invites'
+  import { uploadMedia } from '@/api/media'
   import { getEntityPermissions, grantPermission, revokePermission } from '@/api/permissions'
   import { getWorld } from '@/api/worlds'
   import EntityNav from '@/components/EntityNav.vue'
@@ -180,6 +202,7 @@
   import { useAuth } from '@/composables/useAuth'
   import { useLogout } from '@/composables/useLogout'
   import { useRenameDialog } from '@/composables/useRenameDialog'
+  import { useSnackbar } from '@/composables/useSnackbar'
   import { anonymousName } from '@/utils/anonymousName'
   import {
     entityTrashVersionKey,
@@ -198,6 +221,7 @@
   const { renameDialogOpen, renameDialogTitle, openRenameDialog, confirmRename, cancelRename } = useRenameDialog()
   const { currentUser } = useAuth()
   const { handleLogout } = useLogout()
+  const { snackbar, snackbarText, snackbarColor, notify } = useSnackbar()
 
   const route = useRoute()
   const router = useRouter()
@@ -234,32 +258,55 @@
 
   async function refreshNavItems () {
     const requestId = ++navItemsRequestId
-    const canAddRootPage = isOwner.value // read before the await so watchEffect tracks it
     const entities = await listEntities(worldId.value)
     if (requestId !== navItemsRequestId) return // a newer refresh already started, discard this stale result
 
     entitiesById = new Map(entities.map(entity => [entity.id, entity]))
     const handlers = {
-      onRename: handleRename, onAddPage: handleAddPage, onDelete: handleDelete, onPermissions: openPermissionsDialog,
+      onRename: handleRename,
+      onAddArticle: handleAddArticle,
+      onAddMap: handleAddMap,
+      onDelete: handleDelete,
+      onPermissions: openPermissionsDialog,
     }
-    navItems.value = [
-      ...entities
-        .filter(entity => entity.parent === null)
-        .map(entity => toNavItem(worldId.value, entity, entitiesById, handlers, isOwner.value)),
-      ...canAddRootPage
-        ? [{ id: 'add-page', title: 'Add page', icon: 'mdi-note-plus-outline', onClick: () => handleAddPage() }]
-        : [],
-    ]
+    navItems.value = entities
+      .filter(entity => entity.parent === null)
+      .map(entity => toNavItem(worldId.value, entity, entitiesById, handlers, isOwner.value))
   }
 
   watchEffect(refreshNavItems)
 
   provide(refreshNavItemsKey, refreshNavItems)
 
-  async function handleAddPage (parentId?: string) {
-    const created = await createEntity(worldId.value, 'New page', parentId)
+  async function handleAddArticle (parentId?: string) {
+    const created = await createEntity(worldId.value, 'New article', parentId)
     await refreshNavItems()
     router.push(`/w/${worldId.value}/e/${created.id}`)
+  }
+
+  const mapFileInput = ref<HTMLInputElement>()
+  let pendingMapParentId: string | undefined
+
+  function handleAddMap (parentId?: string) {
+    pendingMapParentId = parentId
+    mapFileInput.value?.click()
+  }
+
+  async function handleMapFileSelected (event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0]
+    const parentId = pendingMapParentId
+    ;(event.target as HTMLInputElement).value = ''
+    if (!file) return
+
+    try {
+      const created = await createEntity(worldId.value, 'New map', parentId)
+      const pic = await uploadMedia(worldId.value, created.id, file)
+      await setMap(worldId.value, created.id, pic)
+      await refreshNavItems()
+      router.push(`/w/${worldId.value}/e/${created.id}`)
+    } catch {
+      notify('Failed to create map', 'error')
+    }
   }
 
   async function handleRename (entityId: string) {

@@ -72,8 +72,15 @@ const router = createRouter({
           path: 'trash',
           component: WorldsTrashView,
         },
+      ],
+    },
+    {
+      path: '/account',
+      component: Worlds,
+      meta: { requiresAuth: true },
+      children: [
         {
-          path: 'account',
+          path: '',
           component: AccountSettingsView,
         },
       ],

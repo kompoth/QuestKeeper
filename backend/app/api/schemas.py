@@ -92,11 +92,6 @@ class MediaUploadOut(BaseModel):
     fields: dict[str, str]
 
 
-class MediaItemOut(BaseModel):
-    file_id: str
-    path: str
-
-
 class SetAvatarRequest(BaseModel):
     file_id: str
 

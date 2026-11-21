@@ -4,7 +4,8 @@ import type { InjectionKey, Ref } from 'vue'
 
 export interface NavItemHandlers {
   onRename: (entityId: string) => void
-  onAddPage: (parentId: string) => void
+  onAddArticle: (parentId: string) => void
+  onAddMap: (parentId: string) => void
   onDelete: (entityId: string) => void
   onPermissions: (entityId: string) => void
 }
@@ -57,10 +58,15 @@ export function toNavItem (
     children: children.length > 0
       ? children.map(child => toNavItem(worldId, child, entitiesById, handlers, isWorldOwner))
       : undefined,
-    // TODO: tailor which actions apply per entity (e.g. omit "Add page" once it already has one)
+    // TODO: tailor which actions apply per entity (e.g. omit "Add article"/"Add map" once it already has a facet)
     actions: [
       entity.access.write && { title: 'Rename', icon: 'mdi-form-textbox', onClick: () => handlers.onRename(entity.id) },
-      entity.access.write && { title: 'Add page', icon: 'mdi-note-plus-outline', onClick: () => handlers.onAddPage(entity.id) },
+      entity.access.write && {
+        title: 'Add article', icon: 'mdi-note-plus-outline', onClick: () => handlers.onAddArticle(entity.id),
+      },
+      entity.access.write && {
+        title: 'Add map', icon: 'mdi-map-plus', onClick: () => handlers.onAddMap(entity.id),
+      },
       isWorldOwner && {
         title: 'Permissions', icon: 'mdi-account-key-outline', onClick: () => handlers.onPermissions(entity.id),
       },

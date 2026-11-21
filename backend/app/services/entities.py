@@ -16,7 +16,7 @@ from app.services.errors import (
     PermissionDeniedError,
     WorldNotFoundError,
 )
-from app.services.media import entity_media_prefix, extract_media_file_id, media_key
+from app.services.media import entity_media_prefix, sweep_unreferenced_media
 
 
 async def list_entities(
@@ -182,40 +182,26 @@ async def purge_entity(
         await storage.delete_prefix(prefix=entity_media_prefix(world_id, purged_id))
 
 
-async def set_article(
-    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId, markdown: str
+async def set_article(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id distinct params, not data fields
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId, markdown: str
 ) -> None:
     access = await get_entity_access(repos, user_id, world_id, entity_id)
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
     await repos.entities.set_article(entity_id, Article(markdown=markdown), user_id)
+    await sweep_unreferenced_media(repos, storage, world_id, entity_id)
 
 
-async def clear_article(repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId) -> None:
+async def clear_article(
+    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId
+) -> None:
     access = await get_entity_access(repos, user_id, world_id, entity_id)
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
     await repos.entities.clear_article(entity_id, user_id)
-
-
-async def _delete_old_map_image(
-    repos: Repositories, storage: MediaStorage, world_id: WorldId, entity_id: EntityId, new_pic: str | None
-) -> None:
-    """A `Map` holds exactly one image - replacing or clearing it deletes the old file.
-
-    No-ops if there was no previous map, or its `pic` isn't one of our own media references (e.g.
-    unset/placeholder data) - nothing to delete in either case.
-    """
-    existing = await repos.entities.get(world_id, entity_id)
-    old_pic = existing.map.pic if existing and existing.map else None
-    if not old_pic or old_pic == new_pic:
-        return
-
-    old_file_id = extract_media_file_id(old_pic, world_id, entity_id)
-    if old_file_id:
-        await storage.delete_prefix(prefix=media_key(world_id, entity_id, old_file_id))
+    await sweep_unreferenced_media(repos, storage, world_id, entity_id)
 
 
 async def set_map(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id/map_ distinct params, not data fields
@@ -225,8 +211,8 @@ async def set_map(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
-    await _delete_old_map_image(repos, storage, world_id, entity_id, map_.pic)
     await repos.entities.set_map(entity_id, map_, user_id)
+    await sweep_unreferenced_media(repos, storage, world_id, entity_id)
 
 
 async def clear_map(
@@ -236,5 +222,5 @@ async def clear_map(
     if not access.write:
         raise PermissionDeniedError(user_id, entity_id)
 
-    await _delete_old_map_image(repos, storage, world_id, entity_id, new_pic=None)
     await repos.entities.clear_map(entity_id, user_id)
+    await sweep_unreferenced_media(repos, storage, world_id, entity_id)

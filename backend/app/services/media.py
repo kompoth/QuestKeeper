@@ -8,8 +8,9 @@ markdown / `Map.pic` / `World.pic` - the signed URL itself is minted fresh on ev
 route, never stored anywhere.
 """
 
+import re
 import secrets
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
 from app.domain.media import MediaStorage, UploadPolicy
 from app.domain.models import EntityId, UserId, WorldId
@@ -42,6 +43,40 @@ def extract_media_file_id(reference: str, world_id: WorldId, entity_id: EntityId
     """
     prefix = media_read_path(world_id, entity_id, "")
     return reference.removeprefix(prefix) if reference.startswith(prefix) else None
+
+
+_FILE_ID_CHARS = r"[A-Za-z0-9_-]+"
+
+
+def extract_referenced_file_ids(markdown: str, world_id: WorldId, entity_id: EntityId) -> set[str]:
+    """Every file_id embedded in a `media_read_path()`-shaped reference within this markdown."""
+    prefix = media_read_path(world_id, entity_id, "")
+    return set(re.findall(rf"{re.escape(prefix)}({_FILE_ID_CHARS})", markdown))
+
+
+async def sweep_unreferenced_media(
+    repos: Repositories, storage: MediaStorage, world_id: WorldId, entity_id: EntityId
+) -> None:
+    """Deletes every media object under this entity's prefix that its current article/map no
+    longer references - called after every article/map mutation so a removed image reference, or a
+    file uploaded but never inserted, can't accumulate as an orphan.
+    """
+    entity = await repos.entities.get(world_id, entity_id)
+    if entity is None:
+        return
+
+    referenced: set[str] = set()
+    if entity.article:
+        referenced |= extract_referenced_file_ids(entity.article.markdown, world_id, entity_id)
+    if entity.map and entity.map.pic:
+        pic_file_id = extract_media_file_id(entity.map.pic, world_id, entity_id)
+        if pic_file_id:
+            referenced.add(pic_file_id)
+
+    prefix = entity_media_prefix(world_id, entity_id)
+    for key in await storage.list_objects(prefix=prefix):
+        if key.removeprefix(prefix) not in referenced:
+            await storage.delete_prefix(prefix=key)
 
 
 def world_pic_key(world_id: WorldId, file_id: str) -> str:
@@ -141,29 +176,3 @@ async def read_redirect_url(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id
         raise PermissionDeniedError(user_id, entity_id)
 
     return await storage.generate_read_url(key=media_key(world_id, entity_id, file_id), ttl_seconds=ttl_seconds)
-
-
-async def list_media(
-    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId
-) -> Sequence[str]:
-    """Every file_id currently uploaded under this entity - the object store is the only source of
-    truth for this (nothing in the database tracks it), so this always reflects real storage state."""
-    access = await get_entity_access(repos, user_id, world_id, entity_id)
-    if not access.read:
-        raise PermissionDeniedError(user_id, entity_id)
-
-    prefix = entity_media_prefix(world_id, entity_id)
-    keys = await storage.list_objects(prefix=prefix)
-    return [key.removeprefix(prefix) for key in keys]
-
-
-async def delete_media(  # noqa: PLR0913, PLR0917 -- repos/storage/world_id/entity_id distinct params
-    repos: Repositories, storage: MediaStorage, user_id: UserId, world_id: WorldId, entity_id: EntityId, file_id: str
-) -> None:
-    """Permanently deletes one file - nothing else ever restores it, and any content still
-    referencing it (article markdown, a Map's pic) is left pointing at a now-404ing path."""
-    access = await get_entity_access(repos, user_id, world_id, entity_id)
-    if not access.write:
-        raise PermissionDeniedError(user_id, entity_id)
-
-    await storage.delete_prefix(prefix=media_key(world_id, entity_id, file_id))

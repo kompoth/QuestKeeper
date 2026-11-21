@@ -6,16 +6,6 @@ interface MediaUploadDto {
   fields: Record<string, string>
 }
 
-interface MediaItemDto {
-  file_id: string
-  path: string
-}
-
-export interface MediaItem {
-  fileId: string
-  path: string
-}
-
 // A bare, backend-relative path, e.g. `/worlds/w1/entities/e1/media/abc123` - not a usable URL on
 // its own (no scheme/host), so it never expires and is safe to persist (in article markdown or
 // Map.pic). Resolve with `apiUrl()` from `@/api/client` wherever it's actually rendered.
@@ -56,17 +46,4 @@ export async function uploadToMintedPolicy (mintPath: string, file: File): Promi
 export async function uploadMedia (worldId: string, entityId: string, file: File): Promise<string> {
   const fileId = await uploadToMintedPolicy(`/worlds/${worldId}/entities/${entityId}/media`, file)
   return mediaPath(worldId, entityId, fileId)
-}
-
-// Every file currently uploaded for this entity - the object store is the only source of truth
-// for this (nothing in the database tracks it), so this always reflects real storage state.
-export async function listMedia (worldId: string, entityId: string): Promise<MediaItem[]> {
-  const dtos = await apiFetch<MediaItemDto[]>(`/worlds/${worldId}/entities/${entityId}/media`)
-  return dtos.map(dto => ({ fileId: dto.file_id, path: dto.path }))
-}
-
-// Permanently deletes one file - nothing restores it, and any content still referencing it (article
-// markdown, a Map's pic) is left pointing at a now-404ing path.
-export async function deleteMedia (worldId: string, entityId: string, fileId: string): Promise<void> {
-  await apiFetch<void>(`/worlds/${worldId}/entities/${entityId}/media/${fileId}`, { method: 'DELETE' })
 }

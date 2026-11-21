@@ -26,6 +26,7 @@ from app.services.errors import (
     PermissionDeniedError,
     WorldNotFoundError,
 )
+from app.services.media import media_key, media_read_path
 from tests.unit.services.fakes import (
     FakeEntityPermissionRepository,
     FakeEntityRepository,
@@ -267,7 +268,7 @@ async def test_set_article_raises_without_write_access():
     repos = make_repos(entity=entity, world=world, grants={})
 
     with pytest.raises(PermissionDeniedError):
-        await set_article(repos, USER_ID, WORLD_ID, ENTITY_ID, "# Hello")
+        await set_article(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID, "# Hello")
 
 
 async def test_set_article_persists_markdown_with_write_access():
@@ -275,7 +276,7 @@ async def test_set_article_persists_markdown_with_write_access():
     world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
     repos = make_repos(entity=entity, world=world)
 
-    await set_article(repos, USER_ID, WORLD_ID, ENTITY_ID, "# Hello")
+    await set_article(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID, "# Hello")
 
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
@@ -287,7 +288,7 @@ async def test_clear_article_removes_article_with_write_access():
     world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
     repos = make_repos(entity=entity, world=world)
 
-    await clear_article(repos, USER_ID, WORLD_ID, ENTITY_ID)
+    await clear_article(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID)
 
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
@@ -317,6 +318,54 @@ async def test_clear_map_removes_map_with_write_access():
     updated = await repos.entities.get(WORLD_ID, ENTITY_ID)
     assert updated is not None
     assert updated.map is None
+
+
+async def test_saving_an_article_sweeps_an_image_no_longer_referenced():
+    old_path = media_read_path(WORLD_ID, ENTITY_ID, "old-file")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", article=Article(markdown=f"![]({old_path})"))
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(entity=entity, world=world)
+    storage = FakeMediaStorage(created_policies=[media_key(WORLD_ID, ENTITY_ID, "old-file")])
+
+    await set_article(repos, storage, USER_ID, WORLD_ID, ENTITY_ID, "# No images here")
+
+    assert storage.deleted_prefixes == [media_key(WORLD_ID, ENTITY_ID, "old-file")]
+
+
+async def test_saving_an_article_keeps_an_image_still_referenced():
+    kept_path = media_read_path(WORLD_ID, ENTITY_ID, "kept-file")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(entity=entity, world=world)
+    storage = FakeMediaStorage(created_policies=[media_key(WORLD_ID, ENTITY_ID, "kept-file")])
+
+    await set_article(repos, storage, USER_ID, WORLD_ID, ENTITY_ID, f"![]({kept_path})")
+
+    assert storage.deleted_prefixes == []
+
+
+async def test_saving_an_article_sweeps_a_file_uploaded_but_never_inserted():
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(entity=entity, world=world)
+    storage = FakeMediaStorage(created_policies=[media_key(WORLD_ID, ENTITY_ID, "abandoned-upload")])
+
+    await set_article(repos, storage, USER_ID, WORLD_ID, ENTITY_ID, "# Unrelated edit")
+
+    assert storage.deleted_prefixes == [media_key(WORLD_ID, ENTITY_ID, "abandoned-upload")]
+
+
+async def test_replacing_a_maps_pic_sweeps_the_old_one():
+    old_pic = media_read_path(WORLD_ID, ENTITY_ID, "old-pic")
+    entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity", map=Map(pic=old_pic))
+    world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
+    repos = make_repos(entity=entity, world=world)
+    storage = FakeMediaStorage(created_policies=[media_key(WORLD_ID, ENTITY_ID, "old-pic")])
+    new_map = Map(pic=media_read_path(WORLD_ID, ENTITY_ID, "new-pic"))
+
+    await set_map(repos, storage, USER_ID, WORLD_ID, ENTITY_ID, new_map)
+
+    assert storage.deleted_prefixes == [media_key(WORLD_ID, ENTITY_ID, "old-pic")]
 
 
 async def test_list_trash_returns_only_deleted_entities_the_caller_can_read():
