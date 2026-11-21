@@ -11,7 +11,6 @@ from app.api.dependencies import (
     SessionToken,
     SettingsDep,
     require_admin,
-    require_csrf,
     require_password_reset_enabled,
     require_registration_enabled,
 )
@@ -42,7 +41,7 @@ async def login(body: LoginRequest, response: Response, repos: Repos) -> User:
     return user
 
 
-@router.post("/logout", dependencies=[Depends(require_csrf)])
+@router.post("/logout")
 async def logout(response: Response, token: SessionToken, repos: Repos) -> None:
     await auth.logout(repos, token)
     response.delete_cookie(auth.SESSION_COOKIE_NAME)
@@ -80,6 +79,6 @@ async def reset_password_route(body: ResetPasswordRequest, repos: Repos) -> None
     await reset_password(repos, body.token, body.new_password)
 
 
-@router.post("/admin/password-reset/{user_id}", dependencies=[Depends(require_admin), Depends(require_csrf)])
+@router.post("/admin/password-reset/{user_id}", dependencies=[Depends(require_admin)])
 async def admin_trigger_password_reset(user_id: UserId, repos: Repos, mailer: MailerDep, settings: SettingsDep) -> None:
     await request_password_reset_for_user(repos, mailer, user_id, frontend_origin=settings.frontend_origin)

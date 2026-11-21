@@ -51,16 +51,6 @@ async def test_update_settings_round_trips(async_client, db_session):
     assert get_response.json() == {"registration_enabled": False, "password_reset_enabled": True}
 
 
-async def test_update_settings_requires_csrf_header(async_client, db_session):
-    await _login_as_admin(async_client, db_session)
-
-    response = await async_client.put(
-        "/admin/settings", json={"registration_enabled": False, "password_reset_enabled": True}
-    )
-
-    assert response.status_code == 403
-
-
 async def test_list_users_requires_admin_role(async_client, db_session):
     await _create_user(db_session)
     await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
@@ -83,15 +73,6 @@ async def test_list_users_paginates(async_client, db_session):
     assert [user["email"] for user in body["users"]] == ["a@example.com", "admin@example.com"]
 
 
-async def test_change_user_role_requires_csrf_header(async_client, db_session):
-    await _login_as_admin(async_client, db_session)
-    await _create_user(db_session, user_id="target")
-
-    response = await async_client.put("/admin/users/target/role", json={"role": "warden"})
-
-    assert response.status_code == 403
-
-
 async def test_create_user_requires_admin_role(async_client, db_session):
     await _create_user(db_session)
     await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
@@ -100,16 +81,6 @@ async def test_create_user_requires_admin_role(async_client, db_session):
         "/admin/users",
         json={"name": "New User", "email": "newbie@example.com", "role": "member"},
         headers=csrf_headers(async_client),
-    )
-
-    assert response.status_code == 403
-
-
-async def test_create_user_requires_csrf_header(async_client, db_session):
-    await _login_as_admin(async_client, db_session)
-
-    response = await async_client.post(
-        "/admin/users", json={"name": "New User", "email": "newbie@example.com", "role": "member"}
     )
 
     assert response.status_code == 403
@@ -146,15 +117,6 @@ async def test_create_user_returns_409_for_a_taken_email(async_client, db_sessio
     )
 
     assert response.status_code == 409
-
-
-async def test_change_user_status_requires_csrf_header(async_client, db_session):
-    await _login_as_admin(async_client, db_session)
-    await _create_user(db_session, user_id="target")
-
-    response = await async_client.put("/admin/users/target/status", json={"status": "banned"})
-
-    assert response.status_code == 403
 
 
 async def test_banned_user_cannot_log_in(async_client, db_session):

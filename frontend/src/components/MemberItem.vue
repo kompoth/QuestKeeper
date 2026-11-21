@@ -1,7 +1,7 @@
 <template>
   <v-list-item :subtitle="user.email">
     <template #prepend>
-      <IdenticonAvatar :seed="user.email" />
+      <IdenticonAvatar :avatar-url="user.avatar" :seed="user.email" />
     </template>
 
     <template #title>

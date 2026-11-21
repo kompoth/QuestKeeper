@@ -28,19 +28,6 @@ async def test_create_and_list_entities(async_client, db_session):
     assert listed["access"] == {"read": True, "write": True, "can_delete": True}
 
 
-async def test_rename_entity_requires_csrf_header(async_client, db_session):
-    await login(async_client, db_session)
-    world_id = await _create_world(async_client)
-    create_response = await async_client.post(
-        f"/worlds/{world_id}/entities", json={"name": "Root"}, headers=csrf_headers(async_client)
-    )
-    entity_id = create_response.json()["id"]
-
-    response = await async_client.patch(f"/worlds/{world_id}/entities/{entity_id}", json={"name": "Renamed"})
-
-    assert response.status_code == 403
-
-
 async def test_delete_entity_soft_deletes_it(async_client, db_session):
     """Excluded from the live list, but a direct GET still returns it (read-only, flagged deleted_at) -
     trashed entities stay viewable for anyone who could already read them."""

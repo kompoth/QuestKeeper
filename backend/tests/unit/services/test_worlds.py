@@ -4,7 +4,13 @@ import pytest
 
 from app.domain.models import PermissionLevel, World, WorldInvite
 from app.domain.repositories import Repositories
-from app.services.errors import IdCollisionError, PermissionDeniedError, WorldNotFoundError, WorldNotInTrashError
+from app.services.errors import (
+    IdCollisionError,
+    PermissionDeniedError,
+    UnsupportedMediaTypeError,
+    WorldNotFoundError,
+    WorldNotInTrashError,
+)
 from app.services.worlds import (
     create_world,
     delete_world,
@@ -12,6 +18,8 @@ from app.services.worlds import (
     list_world_trash,
     list_worlds,
     purge_world,
+    read_world_pic_redirect_url,
+    request_world_pic_upload,
     restore_world,
     update_world,
 )
@@ -126,7 +134,7 @@ async def test_update_world_raises_when_world_not_found():
     repos = make_repos()
 
     with pytest.raises(WorldNotFoundError):
-        await update_world(repos, OWNER_ID, WORLD_ID, "New Name")
+        await update_world(repos, FakeMediaStorage(), OWNER_ID, WORLD_ID, "New Name")
 
 
 async def test_update_world_raises_when_caller_is_not_owner():
@@ -134,14 +142,14 @@ async def test_update_world_raises_when_caller_is_not_owner():
     repos = make_repos(world=world)
 
     with pytest.raises(PermissionDeniedError):
-        await update_world(repos, OTHER_USER_ID, WORLD_ID, "New Name")
+        await update_world(repos, FakeMediaStorage(), OTHER_USER_ID, WORLD_ID, "New Name")
 
 
 async def test_update_world_replaces_mutable_fields_for_the_owner():
     world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", description="Old")
     repos = make_repos(world=world)
 
-    await update_world(repos, OWNER_ID, WORLD_ID, "New Name", "New", "pic.png")
+    await update_world(repos, FakeMediaStorage(), OWNER_ID, WORLD_ID, "New Name", "New", "pic.png")
 
     updated = await repos.worlds.get(WORLD_ID)
     assert updated is not None
@@ -149,6 +157,36 @@ async def test_update_world_replaces_mutable_fields_for_the_owner():
     assert updated.description == "New"
     assert updated.pic == "pic.png"
     assert updated.owner_id == OWNER_ID
+
+
+async def test_update_world_deletes_the_old_pic_when_replaced():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/worlds/w1/pic/old-file")
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/worlds/w1/pic/new-file")
+
+    assert storage.deleted_prefixes == ["worlds/w1/pic/old-file"]
+
+
+async def test_update_world_does_not_delete_when_pic_is_unchanged():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/worlds/w1/pic/same-file")
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/worlds/w1/pic/same-file")
+
+    assert storage.deleted_prefixes == []
+
+
+async def test_update_world_does_not_delete_a_pic_that_is_not_our_own_reference_shape():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="https://placeholder.test/pic.png")
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic=None)
+
+    assert storage.deleted_prefixes == []
 
 
 async def test_delete_world_soft_deletes_it():
@@ -233,3 +271,95 @@ async def test_purge_world_raises_when_not_in_trash():
 
     with pytest.raises(WorldNotInTrashError):
         await purge_world(repos, FakeMediaStorage(), OWNER_ID, WORLD_ID)
+
+
+async def test_purge_world_sweeps_the_worlds_own_pic_prefix():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", deleted_at=datetime.now(UTC))
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    await purge_world(repos, storage, OWNER_ID, WORLD_ID)
+
+    assert f"worlds/{WORLD_ID}/pic/" in storage.deleted_prefixes
+
+
+async def test_request_world_pic_upload_succeeds_for_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    file_id, policy = await request_world_pic_upload(
+        repos, storage, OWNER_ID, WORLD_ID, content_type="image/png", size=12, max_bytes=1024, ttl_seconds=60
+    )
+
+    assert file_id
+    assert storage.created_policies == [f"worlds/{WORLD_ID}/pic/{file_id}"]
+    assert policy.url
+
+
+async def test_request_world_pic_upload_raises_when_caller_is_not_owner():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(PermissionDeniedError):
+        await request_world_pic_upload(
+            repos,
+            FakeMediaStorage(),
+            OTHER_USER_ID,
+            WORLD_ID,
+            content_type="image/png",
+            size=12,
+            max_bytes=1024,
+            ttl_seconds=60,
+        )
+
+
+async def test_request_world_pic_upload_raises_when_world_not_found():
+    repos = make_repos()
+
+    with pytest.raises(WorldNotFoundError):
+        await request_world_pic_upload(
+            repos,
+            FakeMediaStorage(),
+            OWNER_ID,
+            WORLD_ID,
+            content_type="image/png",
+            size=12,
+            max_bytes=1024,
+            ttl_seconds=60,
+        )
+
+
+async def test_request_world_pic_upload_rejects_unsupported_content_type():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(UnsupportedMediaTypeError):
+        await request_world_pic_upload(
+            repos,
+            FakeMediaStorage(),
+            OWNER_ID,
+            WORLD_ID,
+            content_type="image/svg+xml",
+            size=12,
+            max_bytes=1024,
+            ttl_seconds=60,
+        )
+
+
+async def test_read_world_pic_redirect_url_succeeds_for_a_user_who_can_see_the_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+    storage = FakeMediaStorage()
+
+    url = await read_world_pic_redirect_url(repos, storage, OWNER_ID, WORLD_ID, "f1", ttl_seconds=60)
+
+    assert url == f"https://storage.test/worlds/{WORLD_ID}/pic/f1"
+
+
+async def test_read_world_pic_redirect_url_raises_when_caller_cannot_see_the_world():
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World")
+    repos = make_repos(world=world)
+
+    with pytest.raises(PermissionDeniedError):
+        await read_world_pic_redirect_url(repos, FakeMediaStorage(), OTHER_USER_ID, WORLD_ID, "f1", ttl_seconds=60)

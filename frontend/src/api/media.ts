@@ -23,12 +23,16 @@ export function mediaPath (worldId: string, entityId: string, fileId: string): s
   return `/worlds/${worldId}/entities/${entityId}/media/${fileId}`
 }
 
-// Uploads a file for one entity's article/map and returns the stable reference to embed in
-// content (see `mediaPath`). Throws ApiError for a mint-time rejection (unsupported type / too
-// large / no access), or a plain Error if the direct-to-store upload itself fails (the store's own
-// signed-condition check, e.g. a declared size that didn't match the real bytes).
-export async function uploadMedia (worldId: string, entityId: string, file: File): Promise<string> {
-  const mint = await apiFetch<MediaUploadDto>(`/worlds/${worldId}/entities/${entityId}/media`, {
+// Mints an upload policy at `mintPath` and uploads `file` directly to the object store. Returns the
+// minted file_id, for the caller to build its own stable path from (see `mediaPath` and friends).
+// Shared by every upload surface (entity media, avatars, world pics) - only the mint path and the
+// resulting path shape differ between them.
+//
+// Throws ApiError for a mint-time rejection (unsupported type / too large / no access), or a plain
+// Error if the direct-to-store upload itself fails (the store's own signed-condition check, e.g. a
+// declared size that didn't match the real bytes).
+export async function uploadToMintedPolicy (mintPath: string, file: File): Promise<string> {
+  const mint = await apiFetch<MediaUploadDto>(mintPath, {
     method: 'POST',
     body: { content_type: file.type, size: file.size },
   })
@@ -44,7 +48,14 @@ export async function uploadMedia (worldId: string, entityId: string, file: File
     throw new Error('Upload to storage failed')
   }
 
-  return mediaPath(worldId, entityId, mint.file_id)
+  return mint.file_id
+}
+
+// Uploads a file for one entity's article/map and returns the stable reference to embed in
+// content (see `mediaPath`).
+export async function uploadMedia (worldId: string, entityId: string, file: File): Promise<string> {
+  const fileId = await uploadToMintedPolicy(`/worlds/${worldId}/entities/${entityId}/media`, file)
+  return mediaPath(worldId, entityId, fileId)
 }
 
 // Every file currently uploaded for this entity - the object store is the only source of truth

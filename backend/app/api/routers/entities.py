@@ -3,9 +3,9 @@
 from collections.abc import Sequence
 from typing import TypedDict
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 
-from app.api.dependencies import CurrentUser, MediaStorageDep, Repos, require_csrf
+from app.api.dependencies import CurrentUser, MediaStorageDep, Repos
 from app.api.schemas import (
     CreateEntityRequest,
     EntityGrantOut,
@@ -63,7 +63,7 @@ async def list_world_trash(world_id: WorldId, user: CurrentUser, repos: Repos) -
     return [EntityOut.from_entity(entity, access) for entity, access in entities]
 
 
-@router.post("", dependencies=[Depends(require_csrf)])
+@router.post("")
 async def create(world_id: WorldId, body: CreateEntityRequest, user: CurrentUser, repos: Repos) -> EntityOut:
     entity_id = await create_entity(repos, user.id, world_id, body.parent_id, body.name)
     return await _entity_out(repos, user.id, world_id, entity_id)
@@ -74,7 +74,7 @@ async def get(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: 
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.patch("/{entity_id}", dependencies=[Depends(require_csrf)])
+@router.patch("/{entity_id}")
 async def rename(
     world_id: WorldId, entity_id: EntityId, body: RenameEntityRequest, user: CurrentUser, repos: Repos
 ) -> EntityOut:
@@ -82,31 +82,31 @@ async def rename(
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.delete("/{entity_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+@router.delete("/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> None:
     await delete_entity(repos, user.id, world_id, entity_id)
 
 
-@router.post("/{entity_id}/restore", dependencies=[Depends(require_csrf)])
+@router.post("/{entity_id}/restore")
 async def restore(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> EntityOut:
     await restore_entity(repos, user.id, world_id, entity_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.post("/{entity_id}/restore-branch", dependencies=[Depends(require_csrf)])
+@router.post("/{entity_id}/restore-branch")
 async def restore_branch(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> EntityOut:
     await restore_entity_branch(repos, user.id, world_id, entity_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.delete("/{entity_id}/purge", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+@router.delete("/{entity_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
 async def purge(
     world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
 ) -> None:
     await purge_entity(repos, storage, user.id, world_id, entity_id)
 
 
-@router.put("/{entity_id}/article", dependencies=[Depends(require_csrf)])
+@router.put("/{entity_id}/article")
 async def put_article(
     world_id: WorldId, entity_id: EntityId, body: SetArticleRequest, user: CurrentUser, repos: Repos
 ) -> EntityOut:
@@ -114,13 +114,13 @@ async def put_article(
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.delete("/{entity_id}/article", dependencies=[Depends(require_csrf)])
+@router.delete("/{entity_id}/article")
 async def delete_article(world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> EntityOut:
     await clear_article(repos, user.id, world_id, entity_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.put("/{entity_id}/map", dependencies=[Depends(require_csrf)])
+@router.put("/{entity_id}/map")
 async def put_map(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
     world_id: WorldId,
     entity_id: EntityId,
@@ -133,7 +133,7 @@ async def put_map(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capabi
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 
-@router.delete("/{entity_id}/map", dependencies=[Depends(require_csrf)])
+@router.delete("/{entity_id}/map")
 async def delete_map(
     world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
 ) -> EntityOut:

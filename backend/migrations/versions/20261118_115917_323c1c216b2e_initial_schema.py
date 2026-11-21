@@ -42,6 +42,7 @@ def upgrade() -> None:
             sa.Enum("ACTIVE", "PENDING", "BANNED", name="userstatus", native_enum=False, length=20),
             nullable=False,
         ),
+        sa.Column("avatar", sa.String(length=512), nullable=True),
         sa.Column("joined_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )

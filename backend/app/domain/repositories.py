@@ -76,6 +76,14 @@ class UserRepository(Protocol):
         """
         ...
 
+    async def update_avatar(self, user_id: UserId, avatar: str | None) -> None:
+        """Raises UserNotFoundError if the user doesn't exist."""
+        ...
+
+    async def update_name(self, user_id: UserId, name: str) -> None:
+        """Raises UserNotFoundError if the user doesn't exist."""
+        ...
+
 
 class WorldRepository(Protocol):
     async def get(self, world_id: WorldId, *, include_deleted: bool = False) -> World | None:

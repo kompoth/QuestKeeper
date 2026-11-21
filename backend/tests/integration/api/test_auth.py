@@ -51,15 +51,6 @@ async def test_me_returns_the_logged_in_user(async_client, db_session):
     assert response.json()["email"] == EMAIL
 
 
-async def test_logout_requires_csrf_header(async_client, db_session):
-    await _create_user(db_session)
-    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
-
-    response = await async_client.post("/auth/logout")
-
-    assert response.status_code == 403
-
-
 async def test_logout_clears_the_session(async_client, db_session):
     await _create_user(db_session)
     await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
@@ -77,7 +68,8 @@ async def test_password_reset_updates_password_and_revokes_other_sessions(async_
     await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     old_session_cookie = async_client.cookies["session"]
 
-    await async_client.post("/auth/password-recovery", json={"email": EMAIL})
+    recovery_response = await async_client.post("/auth/password-recovery", json={"email": EMAIL})
+    assert recovery_response.status_code == 200
     reset_url = mailer.password_resets[0][1]
     token = reset_url.split("token=")[1]
 

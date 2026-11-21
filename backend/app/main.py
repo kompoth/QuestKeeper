@@ -3,16 +3,18 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.adapters.db.session import create_engine, create_session_factory
-from app.api.dependencies import CSRF_HEADER_NAME
+from app.api.dependencies import CSRF_HEADER_NAME, enforce_csrf
 from app.api.errors import register_exception_handlers
 from app.api.routers.admin import router as admin_router
 from app.api.routers.auth import router as auth_router
+from app.api.routers.avatar import router as avatar_router
 from app.api.routers.entities import router as entities_router
 from app.api.routers.media import router as media_router
+from app.api.routers.profile import router as profile_router
 from app.api.routers.sharing import invites_router, permissions_router
 from app.api.routers.worlds import router as worlds_router
 from app.composition import build_repositories
@@ -46,7 +48,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     yield
 
 
-app = FastAPI(title="Questkeeper", lifespan=lifespan)
+app = FastAPI(title="Questkeeper", lifespan=lifespan, dependencies=[Depends(enforce_csrf)])
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +62,8 @@ register_exception_handlers(app)
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(avatar_router)
+app.include_router(profile_router)
 app.include_router(worlds_router)
 app.include_router(entities_router)
 app.include_router(media_router)

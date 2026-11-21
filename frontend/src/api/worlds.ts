@@ -1,5 +1,6 @@
 import type { World } from '@/types/world'
 import { ApiError, apiFetch } from '@/api/client'
+import { uploadToMintedPolicy } from '@/api/media'
 
 interface WorldDto {
   id: string
@@ -49,8 +50,21 @@ export async function createWorld (name: string, description: string): Promise<W
   return toWorld(await apiFetch<WorldDto>('/worlds', { method: 'POST', body: { name, description } }))
 }
 
-export async function updateWorld (id: string, name: string, description: string): Promise<World> {
-  return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`, { method: 'PATCH', body: { name, description } }))
+export async function updateWorld (id: string, name: string, description: string, pic: string | null): Promise<World> {
+  return toWorld(await apiFetch<WorldDto>(`/worlds/${id}`, { method: 'PATCH', body: { name, description, pic } }))
+}
+
+// A bare, backend-relative path, e.g. `/worlds/w1/pic/abc123` - not a usable URL on its own (no
+// scheme/host), so it never expires and is safe to persist on `World.pic`. Resolve with `apiUrl()`
+// from `@/api/client` wherever it's actually rendered.
+export function worldPicPath (worldId: string, fileId: string): string {
+  return `/worlds/${worldId}/pic/${fileId}`
+}
+
+// Uploads a new pic for a world and returns the stable reference to attach via `updateWorld`.
+export async function uploadWorldPic (worldId: string, file: File): Promise<string> {
+  const fileId = await uploadToMintedPolicy(`/worlds/${worldId}/pic`, file)
+  return worldPicPath(worldId, fileId)
 }
 
 export async function deleteWorld (id: string): Promise<void> {

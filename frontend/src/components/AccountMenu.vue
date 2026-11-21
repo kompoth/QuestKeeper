@@ -12,6 +12,8 @@
         to="/admin"
       />
 
+      <v-list-item prepend-icon="mdi-account-cog" title="My Account" to="/w/account" />
+
       <v-list-item
         :prepend-icon="theme.global.current.value.dark ? 'mdi-weather-sunny' : 'mdi-weather-night'"
         :title="theme.global.current.value.dark ? 'Light mode' : 'Dark mode'"

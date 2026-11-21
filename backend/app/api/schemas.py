@@ -34,6 +34,7 @@ class UserOut(BaseModel):
     email: str
     role: UserRole
     status: UserStatus
+    avatar: str | None
     joined_at: datetime
 
 
@@ -94,6 +95,14 @@ class MediaUploadOut(BaseModel):
 class MediaItemOut(BaseModel):
     file_id: str
     path: str
+
+
+class SetAvatarRequest(BaseModel):
+    file_id: str
+
+
+class UpdateNameRequest(BaseModel):
+    name: str
 
 
 class CreateEntityRequest(BaseModel):

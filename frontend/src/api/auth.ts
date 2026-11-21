@@ -7,6 +7,7 @@ export interface UserDto {
   email: string
   role: UserRole
   status: UserStatus
+  avatar: string | null
   joined_at: string
 }
 
@@ -17,6 +18,7 @@ export function toUser (dto: UserDto): User {
     email: dto.email,
     role: dto.role,
     status: dto.status,
+    avatar: dto.avatar,
     joinedAt: dto.joined_at,
   }
 }

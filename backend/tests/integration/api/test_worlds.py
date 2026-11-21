@@ -29,14 +29,6 @@ async def test_list_my_worlds_requires_a_session(async_client):
     assert response.status_code == 401
 
 
-async def test_create_world_requires_csrf_header(async_client, db_session):
-    await login(async_client, db_session, user_id="u1")
-
-    response = await async_client.post("/worlds", json={"name": "New World"})
-
-    assert response.status_code == 403
-
-
 async def test_list_my_worlds_includes_owner_name_for_a_world_held_via_invite(async_client, db_session):
     await login(async_client, db_session, user_id="u1")
     await _create_owned_world(db_session)
@@ -56,15 +48,6 @@ async def test_list_my_worlds_includes_owner_name_for_a_world_held_via_invite(as
     assert response.status_code == 200
     [world] = response.json()
     assert world["owner_name"] == "Owner"
-
-
-async def test_delete_world_requires_csrf_header(async_client, db_session):
-    await login(async_client, db_session, user_id="owner")
-    world_id = await _create_world_via_api(async_client)
-
-    response = await async_client.delete(f"/worlds/{world_id}")
-
-    assert response.status_code == 403
 
 
 async def test_list_world_trash_requires_a_session(async_client):

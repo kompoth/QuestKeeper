@@ -14,6 +14,7 @@ import Login from '@/layouts/Login.vue'
 import NotFound from '@/layouts/NotFound.vue'
 import World from '@/layouts/World.vue'
 import Worlds from '@/layouts/Worlds.vue'
+import AccountSettingsView from '@/views/account/AccountSettingsView.vue'
 import AdminSettingsView from '@/views/admin/AdminSettingsView.vue'
 import AdminUsersView from '@/views/admin/AdminUsersView.vue'
 import LoginView from '@/views/login/LoginView.vue'
@@ -70,6 +71,10 @@ const router = createRouter({
         {
           path: 'trash',
           component: WorldsTrashView,
+        },
+        {
+          path: 'account',
+          component: AccountSettingsView,
         },
       ],
     },

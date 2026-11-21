@@ -28,6 +28,7 @@ class User(BaseModel):
     hashed_password: str
     role: UserRole
     status: UserStatus = UserStatus.ACTIVE
+    avatar: str | None = None
     joined_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

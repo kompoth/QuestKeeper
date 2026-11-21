@@ -103,6 +103,7 @@ def _user_from_row(row: UserRow) -> User:
         hashed_password=row.hashed_password,
         role=row.role,
         status=row.status,
+        avatar=row.avatar,
         joined_at=row.joined_at,
     )
 
@@ -181,6 +182,7 @@ class SqlUserRepository:
                 hashed_password=user.hashed_password,
                 role=user.role,
                 status=user.status,
+                avatar=user.avatar,
                 joined_at=user.joined_at,
             )
         )
@@ -237,6 +239,18 @@ class SqlUserRepository:
         row.name = name
         row.hashed_password = hashed_password
         row.status = UserStatus.ACTIVE
+
+    async def update_avatar(self, user_id: UserId, avatar: str | None) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.avatar = avatar
+
+    async def update_name(self, user_id: UserId, name: str) -> None:
+        row = await self._session.get(UserRow, user_id)
+        if row is None:
+            raise UserNotFoundError(user_id)
+        row.name = name
 
 
 class SqlWorldRepository:

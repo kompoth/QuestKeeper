@@ -10,10 +10,10 @@ and redirects.
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 from fastapi.responses import RedirectResponse
 
-from app.api.dependencies import CurrentUser, MediaStorageDep, Repos, SettingsDep, require_csrf
+from app.api.dependencies import CurrentUser, MediaStorageDep, Repos, SettingsDep
 from app.api.schemas import MediaItemOut, MediaUploadOut, RequestMediaUploadRequest
 from app.domain.models import EntityId, WorldId
 from app.services.media import delete_media, list_media, media_read_path, read_redirect_url, request_upload
@@ -21,7 +21,7 @@ from app.services.media import delete_media, list_media, media_read_path, read_r
 router = APIRouter(prefix="/worlds/{world_id}/entities/{entity_id}/media", tags=["media"])
 
 
-@router.post("", dependencies=[Depends(require_csrf)])
+@router.post("")
 async def upload(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
     world_id: WorldId,
     entity_id: EntityId,
@@ -72,7 +72,7 @@ async def list_(
     return [MediaItemOut(file_id=file_id, path=media_read_path(world_id, entity_id, file_id)) for file_id in file_ids]
 
 
-@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
     world_id: WorldId, entity_id: EntityId, file_id: str, user: CurrentUser, repos: Repos, storage: MediaStorageDep
 ) -> None:

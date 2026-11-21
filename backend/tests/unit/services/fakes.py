@@ -99,6 +99,16 @@ class FakeUserRepository:
             update={"name": name, "hashed_password": hashed_password, "status": UserStatus.ACTIVE}
         )
 
+    async def update_avatar(self, user_id: UserId, avatar: str | None) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"avatar": avatar})
+
+    async def update_name(self, user_id: UserId, name: str) -> None:
+        if user_id not in self.users_by_id:
+            raise UserNotFoundError(user_id)
+        self.users_by_id[user_id] = self.users_by_id[user_id].model_copy(update={"name": name})
+
 
 @dataclass
 class FakeWorldRepository:

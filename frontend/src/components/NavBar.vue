@@ -20,7 +20,7 @@
     <AccountMenu @logout="emit('logout')">
       <template #activator="{ props: menuProps }">
         <v-btn icon variant="text" v-bind="menuProps">
-          <IdenticonAvatar v-if="currentUser" :seed="currentUser.email" />
+          <IdenticonAvatar v-if="currentUser" :avatar-url="currentUser.avatar" :seed="currentUser.email" />
         </v-btn>
       </template>
     </AccountMenu>

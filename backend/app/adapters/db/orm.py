@@ -27,6 +27,7 @@ class UserRow(Base):
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, native_enum=False, length=20), default=UserStatus.ACTIVE
     )
+    avatar: Mapped[str | None] = mapped_column(String(512), default=None)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 

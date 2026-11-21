@@ -7,5 +7,6 @@ export interface User {
   email: string
   role: UserRole
   status: UserStatus
+  avatar: string | null
   joinedAt: string
 }

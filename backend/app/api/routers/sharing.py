@@ -2,10 +2,10 @@
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Response, status
 
 from app.api.cookies import set_session_cookies
-from app.api.dependencies import CurrentUser, MailerDep, Repos, SettingsDep, require_csrf
+from app.api.dependencies import CurrentUser, MailerDep, Repos, SettingsDep
 from app.api.schemas import (
     ConfirmInviteRequest,
     CreateInviteRequest,
@@ -38,21 +38,17 @@ def _invitee_name(invitee: User | None, *, accepted: bool) -> str | None:
     return invitee.name
 
 
-@permissions_router.post("/permissions", dependencies=[Depends(require_csrf)])
+@permissions_router.post("/permissions")
 async def grant(world_id: WorldId, body: GrantPermissionRequest, user: CurrentUser, repos: Repos) -> None:
     await grant_permission(repos, user.id, world_id, body.entity_id, body.grantee_email, body.level)
 
 
-@permissions_router.delete(
-    "/permissions/{grantee_id}/{entity_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_csrf)],
-)
+@permissions_router.delete("/permissions/{grantee_id}/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke(world_id: WorldId, grantee_id: UserId, entity_id: EntityId, user: CurrentUser, repos: Repos) -> None:
     await revoke_permission(repos, user.id, world_id, grantee_id, entity_id)
 
 
-@permissions_router.post("/invites", dependencies=[Depends(require_csrf)])
+@permissions_router.post("/invites")
 async def invite(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
     world_id: WorldId,
     body: CreateInviteRequest,
@@ -80,7 +76,7 @@ async def list_invites(world_id: WorldId, user: CurrentUser, repos: Repos) -> Se
     return summaries
 
 
-@permissions_router.delete("/invites", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)])
+@permissions_router.delete("/invites", status_code=status.HTTP_204_NO_CONTENT)
 async def expel(world_id: WorldId, email: str, user: CurrentUser, repos: Repos) -> None:
     await expel_invitee(repos, user.id, world_id, email)
 
@@ -91,7 +87,7 @@ async def list_my_invites(user: CurrentUser, repos: Repos) -> Sequence[PendingIn
     return [PendingInviteOut.from_invite(invite_) for invite_ in invites]
 
 
-@invites_router.post("/{world_id}/accept", dependencies=[Depends(require_csrf)])
+@invites_router.post("/{world_id}/accept")
 async def accept(world_id: WorldId, user: CurrentUser, repos: Repos) -> None:
     await accept_invite_for_world(repos, user.id, world_id)
 

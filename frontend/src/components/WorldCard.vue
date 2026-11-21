@@ -1,6 +1,10 @@
 <template>
   <v-card :hover="to !== undefined" min-height="220" :to="to">
-    <v-sheet class="d-flex align-center justify-center" color="surface-variant" height="140">
+    <v-img v-if="world.pic" cover height="140" :src="apiUrl(world.pic)">
+      <slot name="overlay" />
+    </v-img>
+
+    <v-sheet v-else class="d-flex align-center justify-center" color="surface-variant" height="140">
       <v-icon color="on-surface-variant" icon="mdi-image" size="48" />
       <slot name="overlay" />
     </v-sheet>
@@ -16,6 +20,7 @@
 
 <script lang="ts" setup>
   import type { World } from '@/types/world'
+  import { apiUrl } from '@/api/client'
 
   defineProps<{
     world: World

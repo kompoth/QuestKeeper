@@ -19,6 +19,20 @@ from app.services import auth
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 
+CSRF_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Mutating routes reachable before a session/CSRF cookie exists.
+CSRF_EXEMPT_PATHS = frozenset(
+    {
+        "/auth/login",
+        "/auth/register",
+        "/auth/register/confirm",
+        "/auth/password-recovery",
+        "/auth/password-reset",
+        "/invites/confirm",
+    }
+)
+
 
 @lru_cache(maxsize=1)
 def _get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -62,7 +76,10 @@ async def current_user(token: SessionToken, repos: Repos) -> User:
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
-def require_csrf(request: Request) -> None:
+def enforce_csrf(request: Request) -> None:
+    if request.method in CSRF_SAFE_METHODS or request.url.path in CSRF_EXEMPT_PATHS:
+        return
+
     cookie_value = request.cookies.get(CSRF_COOKIE_NAME)
     header_value = request.headers.get(CSRF_HEADER_NAME)
     if not cookie_value or cookie_value != header_value:
