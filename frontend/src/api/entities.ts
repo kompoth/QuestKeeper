@@ -2,6 +2,7 @@ import type { Entity, MapPin } from '@/types/entity'
 import { ApiError, apiFetch } from '@/api/client'
 
 interface MapPinDto {
+  id: string
   entity_id: string
   x: number
   y: number
@@ -41,7 +42,7 @@ function toEntity (dto: EntityDto): Entity {
       ? null
       : {
           pic: dto.map.pic,
-          pins: Object.values(dto.map.pins).map(pin => ({ entityId: pin.entity_id, x: pin.x, y: pin.y })),
+          pins: Object.values(dto.map.pins).map(pin => ({ id: pin.id, entityId: pin.entity_id, x: pin.x, y: pin.y })),
         },
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
@@ -116,7 +117,40 @@ export async function setArticle (worldId: string, entityId: string, markdown: s
 export async function setMap (worldId: string, entityId: string, pic: string, pins: MapPin[] = []): Promise<Entity> {
   const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/map`, {
     method: 'PUT',
-    body: { pic, pins: pins.map(pin => ({ entity_id: pin.entityId, x: pin.x, y: pin.y })) },
+    body: { pic, pins: pins.map(pin => ({ id: pin.id, entity_id: pin.entityId, x: pin.x, y: pin.y })) },
+  })
+  return toEntity(dto)
+}
+
+export async function addMapPin (
+  worldId: string, entityId: string, pinnedEntityId: string, x: number, y: number,
+): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/map/pins`, {
+    method: 'POST',
+    body: { entity_id: pinnedEntityId, x, y },
+  })
+  return toEntity(dto)
+}
+
+export interface MapPinUpdate {
+  entityId?: string
+  x?: number
+  y?: number
+}
+
+export async function updateMapPin (
+  worldId: string, entityId: string, pinId: string, update: MapPinUpdate,
+): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/map/pins/${pinId}`, {
+    method: 'PATCH',
+    body: { entity_id: update.entityId, x: update.x, y: update.y },
+  })
+  return toEntity(dto)
+}
+
+export async function deleteMapPin (worldId: string, entityId: string, pinId: string): Promise<Entity> {
+  const dto = await apiFetch<EntityDto>(`/worlds/${worldId}/entities/${entityId}/map/pins/${pinId}`, {
+    method: 'DELETE',
   })
   return toEntity(dto)
 }

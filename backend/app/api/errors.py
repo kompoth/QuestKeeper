@@ -17,6 +17,7 @@ from app.services.errors import (
     InvalidStatusTransitionError,
     InviteNotFoundError,
     InviteTokenNotFoundError,
+    MapPinNotFoundError,
     MediaTooLargeError,
     PasswordResetTokenNotFoundError,
     PermissionDeniedError,
@@ -68,6 +69,7 @@ _NOT_FOUND_EXCEPTIONS = (
     RegistrationTokenNotFoundError,
     UserNotFoundError,
     SqlInviteNotFoundError,
+    MapPinNotFoundError,
 )
 
 

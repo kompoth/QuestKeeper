@@ -197,6 +197,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_world_invites_world_id"), "world_invites", ["world_id"], unique=False)
     op.create_table(
         "map_pins",
+        sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("map_entity_id", sa.String(length=36), nullable=False),
         sa.Column("x", sa.Float(), nullable=False),
         sa.Column("y", sa.Float(), nullable=False),
@@ -209,8 +210,9 @@ def upgrade() -> None:
             ["pinned_entity_id"],
             ["entities.id"],
         ),
-        sa.PrimaryKeyConstraint("map_entity_id", "x", "y"),
+        sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index(op.f("ix_map_pins_map_entity_id"), "map_pins", ["map_entity_id"], unique=False)
     # ### end Alembic commands ###
 
 

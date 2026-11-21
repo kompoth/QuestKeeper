@@ -1,4 +1,5 @@
 export interface MapPin {
+  id: string
   entityId: string
   x: number
   y: number

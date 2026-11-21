@@ -8,6 +8,7 @@ from fastapi import APIRouter, status
 from app.api.dependencies import CurrentUser, MediaStorageDep, Repos
 from app.api.schemas import (
     CreateEntityRequest,
+    CreateMapPinRequest,
     EntityGrantOut,
     EntityOut,
     EntityPermissionsOut,
@@ -15,14 +16,17 @@ from app.api.schemas import (
     RenameEntityRequest,
     SetArticleRequest,
     SetMapRequest,
+    UpdateMapPinRequest,
 )
-from app.domain.models import EntityId, PermissionLevel, User, UserId, WorldId
+from app.domain.models import EntityId, MapPinId, PermissionLevel, User, UserId, WorldId
 from app.domain.repositories import Repositories
 from app.services.entities import (
+    add_map_pin,
     clear_article,
     clear_map,
     create_entity,
     delete_entity,
+    delete_map_pin,
     get_entity,
     list_entities,
     list_trash,
@@ -32,6 +36,7 @@ from app.services.entities import (
     restore_entity_branch,
     set_article,
     set_map,
+    update_map_pin,
 )
 from app.services.sharing import EntityGrant, InheritedEntityGrant, get_entity_permissions
 
@@ -145,6 +150,37 @@ async def delete_map(
     world_id: WorldId, entity_id: EntityId, user: CurrentUser, repos: Repos, storage: MediaStorageDep
 ) -> EntityOut:
     await clear_map(repos, storage, user.id, world_id, entity_id)
+    return await _entity_out(repos, user.id, world_id, entity_id)
+
+
+@router.post("/{entity_id}/map/pins")
+async def add_pin(
+    world_id: WorldId, entity_id: EntityId, body: CreateMapPinRequest, user: CurrentUser, repos: Repos
+) -> EntityOut:
+    await add_map_pin(repos, user.id, world_id, entity_id, body.entity_id, body.x, body.y)
+    return await _entity_out(repos, user.id, world_id, entity_id)
+
+
+@router.patch("/{entity_id}/map/pins/{pin_id}")
+async def update_pin(  # noqa: PLR0913, PLR0917 -- distinct FastAPI-injected capability params, not data fields
+    world_id: WorldId,
+    entity_id: EntityId,
+    pin_id: MapPinId,
+    body: UpdateMapPinRequest,
+    user: CurrentUser,
+    repos: Repos,
+) -> EntityOut:
+    await update_map_pin(
+        repos, user.id, world_id, entity_id, pin_id, x=body.x, y=body.y, pinned_entity_id=body.entity_id
+    )
+    return await _entity_out(repos, user.id, world_id, entity_id)
+
+
+@router.delete("/{entity_id}/map/pins/{pin_id}")
+async def delete_pin(
+    world_id: WorldId, entity_id: EntityId, pin_id: MapPinId, user: CurrentUser, repos: Repos
+) -> EntityOut:
+    await delete_map_pin(repos, user.id, world_id, entity_id, pin_id)
     return await _entity_out(repos, user.id, world_id, entity_id)
 
 

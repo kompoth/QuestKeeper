@@ -85,9 +85,10 @@ class MapRow(Base):
 class MapPinRow(Base):
     __tablename__ = "map_pins"
 
-    map_entity_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("maps.entity_id"), primary_key=True)
-    x: Mapped[float] = mapped_column(Float, primary_key=True)
-    y: Mapped[float] = mapped_column(Float, primary_key=True)
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True)
+    map_entity_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("maps.entity_id"), index=True)
+    x: Mapped[float] = mapped_column(Float)
+    y: Mapped[float] = mapped_column(Float)
     pinned_entity_id: Mapped[str] = mapped_column(String(ID_LENGTH), ForeignKey("entities.id"))
 
     map: Mapped[MapRow] = relationship(back_populates="pins")

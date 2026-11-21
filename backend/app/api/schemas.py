@@ -118,7 +118,19 @@ class SetMapRequest(BaseModel):
     pins: list[MapPin] = []
 
     def to_map(self) -> Map:
-        return Map(pic=self.pic, pins={(pin.x, pin.y): pin for pin in self.pins})
+        return Map(pic=self.pic, pins={pin.id: pin for pin in self.pins})
+
+
+class CreateMapPinRequest(BaseModel):
+    entity_id: EntityId
+    x: float
+    y: float
+
+
+class UpdateMapPinRequest(BaseModel):
+    entity_id: EntityId | None = None
+    x: float | None = None
+    y: float | None = None
 
 
 class GrantPermissionRequest(BaseModel):

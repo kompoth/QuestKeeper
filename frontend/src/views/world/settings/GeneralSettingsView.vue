@@ -31,7 +31,7 @@
           variant="tonal"
           @click="fileInput?.click()"
         >
-          Change picture
+          Change image
         </v-btn>
       </v-col>
     </v-row>

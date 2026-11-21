@@ -61,6 +61,10 @@ class EntityNotInTrashError(Exception):
     """Raised when restore/restore-branch/purge targets an entity that exists but isn't soft-deleted."""
 
 
+class MapPinNotFoundError(Exception):
+    """Raised when a map-pin mutation targets a pin_id that doesn't exist on the given entity's map."""
+
+
 class WorldNotInTrashError(Exception):
     """Raised when restore/purge targets a world that exists but isn't soft-deleted."""
 

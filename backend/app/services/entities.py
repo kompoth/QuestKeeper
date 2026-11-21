@@ -5,7 +5,7 @@ from collections.abc import Sequence
 
 from app.domain import permissions
 from app.domain.media import MediaStorage
-from app.domain.models import Article, Entity, EntityId, Map, UserId, WorldId
+from app.domain.models import Article, Entity, EntityId, Map, MapPin, MapPinId, UserId, WorldId
 from app.domain.permissions import EntityAccess
 from app.domain.repositories import Repositories
 from app.services.access import FULL_ACCESS, get_entity_access
@@ -224,3 +224,59 @@ async def clear_map(
 
     await repos.entities.clear_map(entity_id, user_id)
     await sweep_unreferenced_media(repos, storage, world_id, entity_id)
+
+
+async def add_map_pin(  # noqa: PLR0913, PLR0917 -- distinct domain params, not data clumping
+    repos: Repositories,
+    user_id: UserId,
+    world_id: WorldId,
+    entity_id: EntityId,
+    pinned_entity_id: EntityId,
+    x: float,
+    y: float,
+) -> MapPin:
+    """Adds a pin to the entity's map, bound to `pinned_entity_id`. A pin never references media
+    directly (only `Map.pic` does), so unlike set_map/set_article this never sweeps media."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.write:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    pin = MapPin(id=secrets.token_urlsafe(9), entity_id=pinned_entity_id, x=x, y=y)
+    try:
+        await repos.entities.add_map_pin(entity_id, pin, user_id)
+    except IdCollisionError:
+        # Vanishingly unlikely - regenerate and retry exactly once rather than fail the request.
+        pin = pin.model_copy(update={"id": secrets.token_urlsafe(9)})
+        await repos.entities.add_map_pin(entity_id, pin, user_id)
+    return pin
+
+
+async def update_map_pin(  # noqa: PLR0913 -- distinct domain/partial-update params, not data clumping
+    repos: Repositories,
+    user_id: UserId,
+    world_id: WorldId,
+    entity_id: EntityId,
+    pin_id: MapPinId,
+    *,
+    x: float | None,
+    y: float | None,
+    pinned_entity_id: EntityId | None,
+) -> None:
+    """Moves and/or rebinds one pin - a `None` field is left unchanged."""
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.write:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    await repos.entities.update_map_pin(
+        entity_id, pin_id, x=x, y=y, pinned_entity_id=pinned_entity_id, actor_id=user_id
+    )
+
+
+async def delete_map_pin(
+    repos: Repositories, user_id: UserId, world_id: WorldId, entity_id: EntityId, pin_id: MapPinId
+) -> None:
+    access = await get_entity_access(repos, user_id, world_id, entity_id)
+    if not access.write:
+        raise PermissionDeniedError(user_id, entity_id)
+
+    await repos.entities.delete_map_pin(entity_id, pin_id, user_id)

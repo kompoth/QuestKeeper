@@ -11,6 +11,8 @@ from app.domain.models import (
     EntityId,
     EntityPermission,
     Map,
+    MapPin,
+    MapPinId,
     PasswordReset,
     PermissionLevel,
     RegistrationConfirmation,
@@ -36,7 +38,7 @@ from app.domain.repositories import (
     WorldInviteRepository,
     WorldRepository,
 )
-from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, MapPinNotFoundError, UserNotFoundError
 
 
 @dataclass
@@ -171,6 +173,8 @@ class FakeEntityRepository:
     ancestor_ids_by_entity: dict[EntityId, Sequence[EntityId]] = field(default_factory=dict)
     collide_next_creates: int = 0
     """Forces the next N create() calls to raise IdCollisionError, regardless of id - for retry tests."""
+    collide_next_pin_creates: int = 0
+    """Forces the next N add_map_pin() calls to raise IdCollisionError, regardless of id - for retry tests."""
 
     async def get(self, world_id: WorldId, entity_id: EntityId, *, include_deleted: bool = False) -> Entity | None:
         entity = self.entities_by_id.get(entity_id)
@@ -277,6 +281,46 @@ class FakeEntityRepository:
 
     async def clear_map(self, entity_id: EntityId, actor_id: UserId) -> None:
         self._update(entity_id, actor_id, map=None)
+
+    async def add_map_pin(self, entity_id: EntityId, pin: MapPin, actor_id: UserId) -> None:
+        if self.collide_next_pin_creates > 0:
+            self.collide_next_pin_creates -= 1
+            raise IdCollisionError(pin.id)
+        entity_map = self.entities_by_id[entity_id].map
+        assert entity_map is not None
+        self._update(entity_id, actor_id, map=entity_map.model_copy(update={"pins": {**entity_map.pins, pin.id: pin}}))
+
+    async def update_map_pin(
+        self,
+        entity_id: EntityId,
+        pin_id: MapPinId,
+        *,
+        x: float | None,
+        y: float | None,
+        pinned_entity_id: EntityId | None,
+        actor_id: UserId,
+    ) -> None:
+        entity_map = self.entities_by_id[entity_id].map
+        if entity_map is None or pin_id not in entity_map.pins:
+            raise MapPinNotFoundError(pin_id)
+        pin = entity_map.pins[pin_id]
+        updated_pin = pin.model_copy(
+            update={
+                "x": pin.x if x is None else x,
+                "y": pin.y if y is None else y,
+                "entity_id": pin.entity_id if pinned_entity_id is None else pinned_entity_id,
+            }
+        )
+        self._update(
+            entity_id, actor_id, map=entity_map.model_copy(update={"pins": {**entity_map.pins, pin_id: updated_pin}})
+        )
+
+    async def delete_map_pin(self, entity_id: EntityId, pin_id: MapPinId, actor_id: UserId) -> None:
+        entity_map = self.entities_by_id[entity_id].map
+        if entity_map is None or pin_id not in entity_map.pins:
+            raise MapPinNotFoundError(pin_id)
+        remaining_pins = {k: v for k, v in entity_map.pins.items() if k != pin_id}
+        self._update(entity_id, actor_id, map=entity_map.model_copy(update={"pins": remaining_pins}))
 
     def _update(self, entity_id: EntityId, actor_id: UserId, **fields: object) -> None:
         entity = self.entities_by_id[entity_id]

@@ -299,7 +299,7 @@ async def test_set_map_persists_map_with_write_access():
     entity = Entity(id=ENTITY_ID, world_id=WORLD_ID, name="Entity")
     world = World(id=WORLD_ID, owner_id=USER_ID, name="World")
     repos = make_repos(entity=entity, world=world)
-    map_ = Map(pic="map.png", pins={(1.0, 2.0): MapPin(entity_id="pinned", x=1, y=2)})
+    map_ = Map(pic="map.png", pins={"pin-1": MapPin(id="pin-1", entity_id="pinned", x=1, y=2)})
 
     await set_map(repos, FakeMediaStorage(), USER_ID, WORLD_ID, ENTITY_ID, map_)
 

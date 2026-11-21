@@ -31,6 +31,7 @@ from app.domain.models import (
     EntityPermission,
     Map,
     MapPin,
+    MapPinId,
     PasswordReset,
     PermissionLevel,
     RegistrationConfirmation,
@@ -44,7 +45,7 @@ from app.domain.models import (
     WorldId,
     WorldInvite,
 )
-from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, UserNotFoundError
+from app.services.errors import EmailAlreadyRegisteredError, IdCollisionError, MapPinNotFoundError, UserNotFoundError
 
 _RUNTIME_SETTINGS_ID = "singleton"
 
@@ -136,10 +137,7 @@ def _entity_from_row(row: EntityRow, children: Sequence[EntityId]) -> Entity:
     world_map = (
         Map(
             pic=row.map.pic,
-            pins={
-                (pin.x, pin.y): MapPin(entity_id=pin.pinned_entity_id, x=int(pin.x), y=int(pin.y))
-                for pin in row.map.pins
-            },
+            pins={pin.id: MapPin(id=pin.id, entity_id=pin.pinned_entity_id, x=pin.x, y=pin.y) for pin in row.map.pins},
         )
         if row.map
         else None
@@ -572,8 +570,8 @@ class SqlEntityRepository:
     async def set_map(self, entity_id: EntityId, map_: Map, actor_id: UserId) -> None:
         row = await self._session.get(MapRow, entity_id, options=[selectinload(MapRow.pins)])
         pins = [
-            MapPinRow(map_entity_id=entity_id, x=x, y=y, pinned_entity_id=pin.entity_id)
-            for (x, y), pin in map_.pins.items()
+            MapPinRow(id=pin.id, map_entity_id=entity_id, x=pin.x, y=pin.y, pinned_entity_id=pin.entity_id)
+            for pin in map_.pins.values()
         ]
         if row is None:
             self._session.add(MapRow(entity_id=entity_id, pic=map_.pic, pins=pins))
@@ -586,6 +584,44 @@ class SqlEntityRepository:
         row = await self._session.get(MapRow, entity_id)
         if row is not None:
             await self._session.delete(row)
+        await self._touch(entity_id, actor_id)
+
+    async def add_map_pin(self, entity_id: EntityId, pin: MapPin, actor_id: UserId) -> None:
+        self._session.add(
+            MapPinRow(id=pin.id, map_entity_id=entity_id, x=pin.x, y=pin.y, pinned_entity_id=pin.entity_id)
+        )
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise IdCollisionError(pin.id) from exc
+        await self._touch(entity_id, actor_id)
+
+    async def update_map_pin(  # noqa: PLR0913 -- distinct partial-update fields, not data clumping
+        self,
+        entity_id: EntityId,
+        pin_id: MapPinId,
+        *,
+        x: float | None,
+        y: float | None,
+        pinned_entity_id: EntityId | None,
+        actor_id: UserId,
+    ) -> None:
+        row = await self._session.get(MapPinRow, pin_id)
+        if row is None or row.map_entity_id != entity_id:
+            raise MapPinNotFoundError(pin_id)
+        if x is not None:
+            row.x = x
+        if y is not None:
+            row.y = y
+        if pinned_entity_id is not None:
+            row.pinned_entity_id = pinned_entity_id
+        await self._touch(entity_id, actor_id)
+
+    async def delete_map_pin(self, entity_id: EntityId, pin_id: MapPinId, actor_id: UserId) -> None:
+        row = await self._session.get(MapPinRow, pin_id)
+        if row is None or row.map_entity_id != entity_id:
+            raise MapPinNotFoundError(pin_id)
+        await self._session.delete(row)
         await self._touch(entity_id, actor_id)
 
     async def _touch(self, entity_id: EntityId, actor_id: UserId) -> None:

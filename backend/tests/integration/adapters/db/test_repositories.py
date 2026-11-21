@@ -320,7 +320,7 @@ class TestSqlEntityRepository:
         db_session.add(make_entity("pinned", world_id="w1"))
         await db_session.commit()
         db_session.add(MapRow(entity_id="e1", pic="map.png"))
-        db_session.add(MapPinRow(map_entity_id="e1", x=1.5, y=2.5, pinned_entity_id="pinned"))
+        db_session.add(MapPinRow(id="pin1", map_entity_id="e1", x=1.5, y=2.5, pinned_entity_id="pinned"))
         await db_session.commit()
 
         entity = await SqlEntityRepository(db_session).get("w1", "e1")
@@ -328,11 +328,11 @@ class TestSqlEntityRepository:
         assert entity is not None
         assert entity.map is not None
         assert entity.map.pic == "map.png"
-        assert list(entity.map.pins.keys()) == [(1.5, 2.5)]
-        pin = entity.map.pins[(1.5, 2.5)]
+        assert list(entity.map.pins.keys()) == ["pin1"]
+        pin = entity.map.pins["pin1"]
         assert pin.entity_id == "pinned"
-        assert pin.x == 1
-        assert pin.y == 2
+        assert pin.x == 1.5
+        assert pin.y == 2.5
 
     async def test_get_populates_children_from_parent_id_query(self, db_session):
         db_session.add(make_user("u1"))
@@ -639,7 +639,7 @@ class TestSqlEntityRepository:
         await db_session.commit()
         db_session.add(ArticleRow(entity_id="entity", markdown="# Hi"))
         db_session.add(MapRow(entity_id="entity", pic="map.png"))
-        db_session.add(MapPinRow(map_entity_id="entity", x=1, y=2, pinned_entity_id="entity"))
+        db_session.add(MapPinRow(id="pin1", map_entity_id="entity", x=1, y=2, pinned_entity_id="entity"))
         db_session.add(EntityPermissionRow(user_id="u1", entity_id="entity", level=PermissionLevel.WRITE))
         await db_session.commit()
 
@@ -704,7 +704,7 @@ class TestSqlEntityRepository:
         db_session.add(make_entity("pinned", world_id="w1"))
         await db_session.commit()
 
-        map_ = Map(pic="map.png", pins={(1.0, 2.0): MapPin(entity_id="pinned", x=1, y=2)})
+        map_ = Map(pic="map.png", pins={"pin1": MapPin(id="pin1", entity_id="pinned", x=1, y=2)})
         await SqlEntityRepository(db_session).set_map("e1", map_, "u1")
         await db_session.commit()
 
@@ -712,7 +712,7 @@ class TestSqlEntityRepository:
         assert entity is not None
         assert entity.map is not None
         assert entity.map.pic == "map.png"
-        assert list(entity.map.pins.keys()) == [(1.0, 2.0)]
+        assert list(entity.map.pins.keys()) == ["pin1"]
 
     async def test_set_map_replaces_pins_of_an_existing_map(self, db_session):
         db_session.add(make_user("u1"))
@@ -724,10 +724,10 @@ class TestSqlEntityRepository:
         db_session.add(make_entity("pinned-new", world_id="w1"))
         await db_session.commit()
         db_session.add(MapRow(entity_id="e1", pic="old.png"))
-        db_session.add(MapPinRow(map_entity_id="e1", x=1, y=1, pinned_entity_id="pinned-old"))
+        db_session.add(MapPinRow(id="pin-old", map_entity_id="e1", x=1, y=1, pinned_entity_id="pinned-old"))
         await db_session.commit()
 
-        map_ = Map(pic="new.png", pins={(2.0, 2.0): MapPin(entity_id="pinned-new", x=2, y=2)})
+        map_ = Map(pic="new.png", pins={"pin-new": MapPin(id="pin-new", entity_id="pinned-new", x=2, y=2)})
         await SqlEntityRepository(db_session).set_map("e1", map_, "u1")
         await db_session.commit()
 
@@ -735,7 +735,7 @@ class TestSqlEntityRepository:
         assert entity is not None
         assert entity.map is not None
         assert entity.map.pic == "new.png"
-        assert list(entity.map.pins.keys()) == [(2.0, 2.0)]
+        assert list(entity.map.pins.keys()) == ["pin-new"]
 
     async def test_clear_map_removes_map_and_its_pins(self, db_session):
         db_session.add(make_user("u1"))
@@ -746,7 +746,7 @@ class TestSqlEntityRepository:
         db_session.add(make_entity("pinned", world_id="w1"))
         await db_session.commit()
         db_session.add(MapRow(entity_id="e1", pic="map.png"))
-        db_session.add(MapPinRow(map_entity_id="e1", x=1, y=1, pinned_entity_id="pinned"))
+        db_session.add(MapPinRow(id="pin1", map_entity_id="e1", x=1, y=1, pinned_entity_id="pinned"))
         await db_session.commit()
 
         await SqlEntityRepository(db_session).clear_map("e1", "u1")

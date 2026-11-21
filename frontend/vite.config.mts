@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import Vue from '@vitejs/plugin-vue'
 import Fonts from 'unplugin-fonts/vite'
 import { defineConfig } from 'vite'
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
+
+const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('package.json', import.meta.url)), 'utf8')) as {
+  version: string
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -31,7 +36,7 @@ export default defineConfig({
       },
     }),
   ],
-  define: { 'process.env': {} },
+  define: { 'process.env': {}, '__APP_VERSION__': JSON.stringify(pkg.version) },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('src', import.meta.url)),

@@ -19,6 +19,7 @@ class UserStatus(StrEnum):
 UserId = str
 EntityId = str
 WorldId = str
+MapPinId = str
 
 
 class User(BaseModel):
@@ -45,14 +46,15 @@ class Article(BaseModel):
 
 
 class MapPin(BaseModel):
+    id: MapPinId
     entity_id: EntityId
-    x: int
-    y: int
+    x: float
+    y: float
 
 
 class Map(BaseModel):
     pic: str
-    pins: dict[tuple[float, float], MapPin] = Field(default_factory=dict)
+    pins: dict[MapPinId, MapPin] = Field(default_factory=dict)
 
 
 class Entity(BaseModel):

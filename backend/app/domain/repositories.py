@@ -10,6 +10,8 @@ from app.domain.models import (
     EntityId,
     EntityPermission,
     Map,
+    MapPin,
+    MapPinId,
     PasswordReset,
     PermissionLevel,
     RegistrationConfirmation,
@@ -187,6 +189,37 @@ class EntityRepository(Protocol):
         ...
 
     async def clear_map(self, entity_id: EntityId, actor_id: UserId) -> None: ...
+
+    async def add_map_pin(self, entity_id: EntityId, pin: MapPin, actor_id: UserId) -> None:
+        """Adds one pin to the entity's existing map facet.
+
+        Raises IdCollisionError if `pin.id` already exists - vanishingly unlikely, the caller should
+        regenerate and retry.
+        """
+        ...
+
+    async def update_map_pin(  # noqa: PLR0913 -- distinct partial-update fields, not data clumping
+        self,
+        entity_id: EntityId,
+        pin_id: MapPinId,
+        *,
+        x: float | None,
+        y: float | None,
+        pinned_entity_id: EntityId | None,
+        actor_id: UserId,
+    ) -> None:
+        """Partially updates one pin's position and/or bound entity - a `None` field is left unchanged.
+
+        Raises MapPinNotFoundError if the pin doesn't exist on this entity's map.
+        """
+        ...
+
+    async def delete_map_pin(self, entity_id: EntityId, pin_id: MapPinId, actor_id: UserId) -> None:
+        """Removes one pin from the entity's map facet.
+
+        Raises MapPinNotFoundError if the pin doesn't exist on this entity's map.
+        """
+        ...
 
 
 class EntityPermissionRepository(Protocol):

@@ -26,6 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Monorepo with independent `backend/` and `frontend/` projects.
 - One `.env` at the repo root (gitignored; `.env.example` documents it) is shared by both — backend resolves it by absolute path (`app/config.py`), frontend via Vite's `envDir` (`vite.config.mts`), so it's found regardless of which directory a command is run from.
 - Only `VITE_`-prefixed vars in that file are exposed to frontend client code; backend vars stay server-side. Backend's `Settings` uses `extra="ignore"` since the shared file carries frontend-only vars it doesn't declare as fields.
+- A single root `VERSION` file (semver) is the project's shared version — `backend/pyproject.toml`'s `version` and `frontend/package.json`'s `version` must always match it.
+- Bump the version with `python3 scripts/bump_version.py {major|minor|patch|<explicit semver>}`, run from the repo root — it updates `VERSION`, `backend/pyproject.toml`, and `frontend/package.json` together. Don't hand-edit any of the three in isolation.
 
 ## Backend (`backend/`)
 

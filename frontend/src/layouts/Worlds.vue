@@ -1,5 +1,5 @@
 <template>
-  <NavBar app-subtitle="Pre-alpha" app-title="QuestKeeper" @logout="handleLogout">
+  <NavBar :app-subtitle="`v${appVersion}`" app-title="QuestKeeper" @logout="handleLogout">
     <template #sidebar>
       <v-list density="compact" nav>
         <v-list-item exact prepend-icon="mdi-earth" title="Worlds" to="/w" />
@@ -21,4 +21,5 @@
   import { useLogout } from '@/composables/useLogout'
 
   const { handleLogout } = useLogout()
+  const appVersion = __APP_VERSION__
 </script>
