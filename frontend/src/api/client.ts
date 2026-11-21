@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
+const BASE_URL = window.__APP_CONFIG__?.apiBaseUrl || import.meta.env.VITE_API_BASE_URL
 const CSRF_COOKIE_NAME = 'csrf_token'
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
 

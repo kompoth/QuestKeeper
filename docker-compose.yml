@@ -1,0 +1,87 @@
+# Local dev stack: MariaDB + Garage (S3-compatible media storage) + backend + frontend, wired to
+# behave like the non-containerized dev setup CLAUDE.md documents (same ports/credentials as .env).
+#
+# backend/migrate use network_mode: host (Linux only) so S3_ENDPOINT_URL/DATABASE_URL in .env -
+# which must also be reachable from the *browser*, not just the backend - work unchanged, with
+# "localhost" meaning the same thing everywhere: host, browser, and backend container alike.
+services:
+  mariadb:
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: questkeeper
+      MYSQL_USER: questkeeper
+      MYSQL_PASSWORD: questkeeper
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  garage:
+    image: dxflrs/garage:v2.5.0
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: questkeeper
+      GARAGE_DEFAULT_SECRET_KEY: questkeeper-dev-secret
+      GARAGE_DEFAULT_BUCKET: questkeeper-media
+    # Published (not just an internal docker-network hostname): presigned upload/read URLs are
+    # followed directly by the browser, and backend/migrate use network_mode: host, so every
+    # consumer reaches Garage the same way - via the host's localhost, matching S3_ENDPOINT_URL in .env.
+    ports:
+      - "9100:3900"
+      - "9101:3901"
+      - "9103:3903"
+    volumes:
+      - ./docker/garage/dev.toml:/etc/garage.toml:ro
+      - garage-data:/var/lib/garage
+
+  migrate:
+    build:
+      context: ./backend
+      target: dev
+    network_mode: host
+    env_file: [.env]
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    network_mode: host
+    env_file: [.env]
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      garage:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    env_file: [.env]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+
+volumes:
+  mariadb-data:
+  garage-data:
+  backend-venv:
+  frontend-node-modules:

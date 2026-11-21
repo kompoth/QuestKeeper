@@ -48,7 +48,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     yield
 
 
-app = FastAPI(title="Questkeeper", lifespan=lifespan, dependencies=[Depends(enforce_csrf)])
+app = FastAPI(title="QuestKeeper", lifespan=lifespan, dependencies=[Depends(enforce_csrf)])
 
 app.add_middleware(
     CORSMiddleware,

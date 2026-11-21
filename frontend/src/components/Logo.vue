@@ -1,5 +1,5 @@
 <template>
-  <div aria-label="Questkeeper" class="logo" role="img" v-html="svg" />
+  <div aria-label="QuestKeeper" class="logo" role="img" v-html="svg" />
 </template>
 
 <script lang="ts" setup>

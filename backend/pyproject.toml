@@ -3,6 +3,8 @@ name = "questkeeper-backend"
 version = "0.1.0"
 description = "Tabletop campaign knowledge base"
 readme = "README.md"
+license = "MIT"
+license-files = ["../LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
     "aioboto3>=15.5.0",

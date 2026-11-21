@@ -30,7 +30,7 @@ class SmtpMailer:
             to_email,
             subject=f"You've been invited to {world_name}",
             body=(
-                f"You've been invited to join the world '{world_name}' on Questkeeper. "
+                f"You've been invited to join the world '{world_name}' on QuestKeeper. "
                 f"Create your account to accept: {confirm_url}"
             ),
         )
@@ -39,7 +39,7 @@ class SmtpMailer:
     async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
         message = self._build_message(
             to_email,
-            subject="Reset your Questkeeper password",
+            subject="Reset your QuestKeeper password",
             body=f"Use this link to reset your password: {reset_url}",
         )
         await self._send(message)
@@ -47,7 +47,7 @@ class SmtpMailer:
     async def send_registration_confirmation(self, *, to_email: str, confirm_url: str) -> None:
         message = self._build_message(
             to_email,
-            subject="Confirm your Questkeeper account",
+            subject="Confirm your QuestKeeper account",
             body=f"Use this link to confirm your account and log in: {confirm_url}",
         )
         await self._send(message)

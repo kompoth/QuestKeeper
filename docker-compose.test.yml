@@ -1,0 +1,30 @@
+# Disposable MariaDB + Garage for `uv run pytest tests/integration` (run from backend/, against
+# the ports below - see CLAUDE.md). Not part of the dev stack: tests manage schema/data themselves
+# (create_all/drop_all per run), so this stays separate and ephemeral.
+services:
+  mariadb-test:
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: questkeeper_test
+    ports:
+      - "3308:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  garage-test:
+    image: dxflrs/garage:v2.5.0
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: questkeeper
+      GARAGE_DEFAULT_SECRET_KEY: questkeeper-test-secret
+      GARAGE_DEFAULT_BUCKET: questkeeper-test
+    ports:
+      - "9200:3900"
+      - "9201:3901"
+      - "9203:3903"
+    volumes:
+      - ./docker/garage/test.toml:/etc/garage.toml:ro

@@ -241,7 +241,7 @@
       await acceptInvite(openedWorldId)
     }
   })
-  const appTitle = computed(() => world.value?.name ?? 'Questkeeper')
+  const appTitle = computed(() => world.value?.name ?? 'QuestKeeper')
   const isOwner = computed(() => world.value !== undefined && world.value.ownerId === currentUser.value?.id)
   provide(isWorldOwnerKey, isOwner)
 

@@ -1,0 +1,31 @@
+# Prod stack: backend + frontend only. MariaDB and S3-compatible storage are external (a managed
+# DB, real AWS S3, etc.) - point DATABASE_URL/S3_* in .env at them. No reverse proxy/TLS here:
+# front these two ports with your own.
+services:
+  migrate:
+    build:
+      context: ./backend
+      target: runtime
+    env_file: [.env]
+    command: ["alembic", "upgrade", "head"]
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    env_file: [.env]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    env_file: [.env]
+    ports:
+      - "80:80"
+    restart: unless-stopped
