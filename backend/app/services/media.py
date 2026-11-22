@@ -31,7 +31,7 @@ def entity_media_prefix(world_id: WorldId, entity_id: EntityId) -> str:
 
 def media_read_path(world_id: WorldId, entity_id: EntityId, file_id: str) -> str:
     """The stable, non-expiring path stored in content - not a signed URL, never rewritten."""
-    return f"/worlds/{world_id}/entities/{entity_id}/media/{file_id}"
+    return f"/api/worlds/{world_id}/entities/{entity_id}/media/{file_id}"
 
 
 def extract_media_file_id(reference: str, world_id: WorldId, entity_id: EntityId) -> str | None:
@@ -89,7 +89,7 @@ def world_pic_prefix(world_id: WorldId) -> str:
 
 def world_pic_read_path(world_id: WorldId, file_id: str) -> str:
     """The stable, non-expiring path stored on `World.pic` - not a signed URL, never rewritten."""
-    return f"/worlds/{world_id}/pic/{file_id}"
+    return f"/api/worlds/{world_id}/pic/{file_id}"
 
 
 def extract_world_pic_file_id(reference: str, world_id: WorldId) -> str | None:

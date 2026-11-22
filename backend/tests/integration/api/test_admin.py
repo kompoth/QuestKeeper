@@ -15,14 +15,14 @@ async def _create_user(db_session, user_id="u1", *, role=UserRole.MEMBER, email=
 
 async def _login_as_admin(async_client, db_session, *, user_id="admin", email="admin@example.com") -> None:
     await _create_user(db_session, user_id=user_id, role=UserRole.ADMIN, email=email)
-    await async_client.post("/auth/login", json={"email": email, "password": PASSWORD})
+    await async_client.post("/api/auth/login", json={"email": email, "password": PASSWORD})
 
 
 async def test_get_settings_requires_admin_role(async_client, db_session):
     await _create_user(db_session)
-    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    await async_client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
 
-    response = await async_client.get("/admin/settings")
+    response = await async_client.get("/api/admin/settings")
 
     assert response.status_code == 403
 
@@ -30,7 +30,7 @@ async def test_get_settings_requires_admin_role(async_client, db_session):
 async def test_get_settings_returns_defaults_when_never_written(async_client, db_session):
     await _login_as_admin(async_client, db_session)
 
-    response = await async_client.get("/admin/settings")
+    response = await async_client.get("/api/admin/settings")
 
     assert response.status_code == 200
     assert response.json() == {"registration_enabled": True, "password_reset_enabled": True}
@@ -40,22 +40,22 @@ async def test_update_settings_round_trips(async_client, db_session):
     await _login_as_admin(async_client, db_session)
 
     update_response = await async_client.put(
-        "/admin/settings",
+        "/api/admin/settings",
         json={"registration_enabled": False, "password_reset_enabled": True},
         headers=csrf_headers(async_client),
     )
     assert update_response.status_code == 200
     assert update_response.json() == {"registration_enabled": False, "password_reset_enabled": True}
 
-    get_response = await async_client.get("/admin/settings")
+    get_response = await async_client.get("/api/admin/settings")
     assert get_response.json() == {"registration_enabled": False, "password_reset_enabled": True}
 
 
 async def test_list_users_requires_admin_role(async_client, db_session):
     await _create_user(db_session)
-    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    await async_client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
 
-    response = await async_client.get("/admin/users")
+    response = await async_client.get("/api/admin/users")
 
     assert response.status_code == 403
 
@@ -65,7 +65,7 @@ async def test_list_users_paginates(async_client, db_session):
     await _create_user(db_session, user_id="u-a", email="a@example.com")
     await _create_user(db_session, user_id="u-b", email="b@example.com")
 
-    response = await async_client.get("/admin/users", params={"offset": 0, "limit": 2})
+    response = await async_client.get("/api/admin/users", params={"offset": 0, "limit": 2})
 
     assert response.status_code == 200
     body = response.json()
@@ -75,10 +75,10 @@ async def test_list_users_paginates(async_client, db_session):
 
 async def test_create_user_requires_admin_role(async_client, db_session):
     await _create_user(db_session)
-    await async_client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    await async_client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
 
     response = await async_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={"name": "New User", "email": "newbie@example.com", "role": "member"},
         headers=csrf_headers(async_client),
     )
@@ -90,7 +90,7 @@ async def test_create_user_persists_the_account_and_sends_a_set_password_email(a
     await _login_as_admin(async_client, db_session)
 
     response = await async_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={"name": "New User", "email": "newbie@example.com", "role": "warden"},
         headers=csrf_headers(async_client),
     )
@@ -103,7 +103,7 @@ async def test_create_user_persists_the_account_and_sends_a_set_password_email(a
     assert len(mailer.password_resets) == 1
     assert mailer.password_resets[0][0] == "newbie@example.com"
 
-    list_response = await async_client.get("/admin/users")
+    list_response = await async_client.get("/api/admin/users")
     assert "newbie@example.com" in [user["email"] for user in list_response.json()["users"]]
 
 
@@ -111,7 +111,7 @@ async def test_create_user_returns_409_for_a_taken_email(async_client, db_sessio
     await _login_as_admin(async_client, db_session)
 
     response = await async_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={"name": "Dupe", "email": "admin@example.com", "role": "member"},
         headers=csrf_headers(async_client),
     )
@@ -123,9 +123,11 @@ async def test_banned_user_cannot_log_in(async_client, db_session):
     await _login_as_admin(async_client, db_session)
     await _create_user(db_session, user_id="target", email="target@example.com")
 
-    await async_client.put("/admin/users/target/status", json={"status": "banned"}, headers=csrf_headers(async_client))
+    await async_client.put(
+        "/api/admin/users/target/status", json={"status": "banned"}, headers=csrf_headers(async_client)
+    )
 
-    response = await async_client.post("/auth/login", json={"email": "target@example.com", "password": PASSWORD})
+    response = await async_client.post("/api/auth/login", json={"email": "target@example.com", "password": PASSWORD})
 
     assert response.status_code == 403
 
@@ -133,16 +135,18 @@ async def test_banned_user_cannot_log_in(async_client, db_session):
 async def test_banning_a_logged_in_user_invalidates_their_session(async_client, db_session):
     await _create_user(db_session, user_id="target", email="target@example.com")
     target_client_response = await async_client.post(
-        "/auth/login", json={"email": "target@example.com", "password": PASSWORD}
+        "/api/auth/login", json={"email": "target@example.com", "password": PASSWORD}
     )
     assert target_client_response.status_code == 200
     target_cookies = dict(async_client.cookies)
 
     await _login_as_admin(async_client, db_session)
-    await async_client.put("/admin/users/target/status", json={"status": "banned"}, headers=csrf_headers(async_client))
+    await async_client.put(
+        "/api/admin/users/target/status", json={"status": "banned"}, headers=csrf_headers(async_client)
+    )
 
     async_client.cookies.clear()
     async_client.cookies.update(target_cookies)
-    me_response = await async_client.get("/auth/me")
+    me_response = await async_client.get("/api/auth/me")
 
     assert me_response.status_code == 401

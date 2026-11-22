@@ -19,12 +19,12 @@ async def _create_owned_world(db_session, world_id="w1", owner_id="owner") -> No
 
 
 async def _create_world_via_api(async_client) -> str:
-    response = await async_client.post("/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
+    response = await async_client.post("/api/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
     return response.json()["id"]
 
 
 async def test_list_my_worlds_requires_a_session(async_client):
-    response = await async_client.get("/worlds")
+    response = await async_client.get("/api/worlds")
 
     assert response.status_code == 401
 
@@ -43,7 +43,7 @@ async def test_list_my_worlds_includes_owner_name_for_a_world_held_via_invite(as
     db_session.add(EntityPermissionRow(user_id="u1", entity_id="e1", level=PermissionLevel.READ))
     await db_session.commit()
 
-    response = await async_client.get("/worlds")
+    response = await async_client.get("/api/worlds")
 
     assert response.status_code == 200
     [world] = response.json()
@@ -51,7 +51,7 @@ async def test_list_my_worlds_includes_owner_name_for_a_world_held_via_invite(as
 
 
 async def test_list_world_trash_requires_a_session(async_client):
-    response = await async_client.get("/worlds/trash")
+    response = await async_client.get("/api/worlds/trash")
 
     assert response.status_code == 401
 
@@ -61,13 +61,13 @@ async def test_purge_world_deletes_entities_and_their_media_from_the_real_store(
     world_id = await _create_world_via_api(async_client)
     entity_id = (
         await async_client.post(
-            f"/worlds/{world_id}/entities", json={"name": "Page"}, headers=csrf_headers(async_client)
+            f"/api/worlds/{world_id}/entities", json={"name": "Page"}, headers=csrf_headers(async_client)
         )
     ).json()["id"]
 
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
@@ -76,14 +76,14 @@ async def test_purge_world_deletes_entities_and_their_media_from_the_real_store(
         fields = dict(mint["fields"])
         await store_client.post(mint["url"], data=fields, files={"file": ("test.png", b"hello-world!")})
     signed_get_url = (
-        await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+        await async_client.get(f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     ).headers["location"]
 
-    await async_client.delete(f"/worlds/{world_id}", headers=csrf_headers(async_client))
-    purge_response = await async_client.delete(f"/worlds/{world_id}/purge", headers=csrf_headers(async_client))
+    await async_client.delete(f"/api/worlds/{world_id}", headers=csrf_headers(async_client))
+    purge_response = await async_client.delete(f"/api/worlds/{world_id}/purge", headers=csrf_headers(async_client))
     assert purge_response.status_code == 204
 
-    assert (await async_client.get(f"/worlds/{world_id}")).status_code == 404
+    assert (await async_client.get(f"/api/worlds/{world_id}")).status_code == 404
     async with httpx.AsyncClient() as store_client:
         final_response = await store_client.get(signed_get_url)
     assert final_response.status_code == 404

@@ -34,7 +34,7 @@ async def login(async_client, db_session, *, user_id: str = "owner", email: str 
         UserRow(id=user_id, name="User", email=email, hashed_password=hash_password(PASSWORD), role=UserRole.MEMBER)
     )
     await db_session.commit()
-    await async_client.post("/auth/login", json={"email": email, "password": PASSWORD})
+    await async_client.post("/api/auth/login", json={"email": email, "password": PASSWORD})
 
 
 @pytest_asyncio.fixture(loop_scope="session")

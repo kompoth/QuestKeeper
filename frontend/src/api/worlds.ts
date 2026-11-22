@@ -58,7 +58,7 @@ export async function updateWorld (id: string, name: string, description: string
 // scheme/host), so it never expires and is safe to persist on `World.pic`. Resolve with `apiUrl()`
 // from `@/api/client` wherever it's actually rendered.
 export function worldPicPath (worldId: string, fileId: string): string {
-  return `/worlds/${worldId}/pic/${fileId}`
+  return `/api/worlds/${worldId}/pic/${fileId}`
 }
 
 // Uploads a new pic for a world and returns the stable reference to attach via `updateWorld`.

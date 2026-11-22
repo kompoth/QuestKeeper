@@ -45,7 +45,7 @@ export async function apiFetch<T> (path: string, options: { method?: string, bod
     }
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetch(`${BASE_URL}/api${path}`, {
     method,
     headers,
     credentials: 'include',

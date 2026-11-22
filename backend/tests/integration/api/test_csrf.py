@@ -14,7 +14,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 async def test_unsafe_method_without_csrf_token_is_rejected(async_client, db_session):
     await login(async_client, db_session)
 
-    response = await async_client.post("/worlds", json={"name": "World"})
+    response = await async_client.post("/api/worlds", json={"name": "World"})
 
     assert response.status_code == 403
 
@@ -22,7 +22,7 @@ async def test_unsafe_method_without_csrf_token_is_rejected(async_client, db_ses
 async def test_unsafe_method_with_mismatched_csrf_token_is_rejected(async_client, db_session):
     await login(async_client, db_session)
 
-    response = await async_client.post("/worlds", json={"name": "World"}, headers={"X-CSRF-Token": "wrong"})
+    response = await async_client.post("/api/worlds", json={"name": "World"}, headers={"X-CSRF-Token": "wrong"})
 
     assert response.status_code == 403
 
@@ -30,7 +30,7 @@ async def test_unsafe_method_with_mismatched_csrf_token_is_rejected(async_client
 async def test_unsafe_method_with_matching_csrf_token_succeeds(async_client, db_session):
     await login(async_client, db_session)
 
-    response = await async_client.post("/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
+    response = await async_client.post("/api/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
 
     assert response.status_code == 200
 
@@ -38,6 +38,6 @@ async def test_unsafe_method_with_matching_csrf_token_succeeds(async_client, db_
 async def test_safe_method_does_not_require_csrf_token(async_client, db_session):
     await login(async_client, db_session)
 
-    response = await async_client.get("/worlds")
+    response = await async_client.get("/api/worlds")
 
     assert response.status_code == 200

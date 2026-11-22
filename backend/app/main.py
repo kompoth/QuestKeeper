@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.adapters.db.session import create_engine, create_session_factory
@@ -60,12 +60,15 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-app.include_router(auth_router)
-app.include_router(admin_router)
-app.include_router(avatar_router)
-app.include_router(profile_router)
-app.include_router(worlds_router)
-app.include_router(entities_router)
-app.include_router(media_router)
-app.include_router(permissions_router)
-app.include_router(invites_router)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(admin_router)
+api_router.include_router(avatar_router)
+api_router.include_router(profile_router)
+api_router.include_router(worlds_router)
+api_router.include_router(entities_router)
+api_router.include_router(media_router)
+api_router.include_router(permissions_router)
+api_router.include_router(invites_router)
+
+app.include_router(api_router)

@@ -11,10 +11,10 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def _create_world_and_entity(async_client) -> tuple[str, str]:
-    world_response = await async_client.post("/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
+    world_response = await async_client.post("/api/worlds", json={"name": "World"}, headers=csrf_headers(async_client))
     world_id = world_response.json()["id"]
     entity_response = await async_client.post(
-        f"/worlds/{world_id}/entities", json={"name": "Page"}, headers=csrf_headers(async_client)
+        f"/api/worlds/{world_id}/entities", json={"name": "Page"}, headers=csrf_headers(async_client)
     )
     return world_id, entity_response.json()["id"]
 
@@ -34,7 +34,7 @@ async def test_mint_upload_succeeds_with_write_access(async_client, db_session):
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
-        f"/worlds/{world_id}/entities/{entity_id}/media",
+        f"/api/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 12},
         headers=csrf_headers(async_client),
     )
@@ -51,7 +51,7 @@ async def test_mint_upload_rejects_unsupported_content_type(async_client, db_ses
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
-        f"/worlds/{world_id}/entities/{entity_id}/media",
+        f"/api/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/svg+xml", "size": 12},
         headers=csrf_headers(async_client),
     )
@@ -64,7 +64,7 @@ async def test_mint_upload_rejects_oversized_declared_size(async_client, db_sess
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     response = await async_client.post(
-        f"/worlds/{world_id}/entities/{entity_id}/media",
+        f"/api/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 999_999_999_999},
         headers=csrf_headers(async_client),
     )
@@ -77,7 +77,7 @@ async def test_upload_and_read_round_trip_against_the_real_store(async_client, d
     world_id, entity_id = await _create_world_and_entity(async_client)
 
     mint_response = await async_client.post(
-        f"/worlds/{world_id}/entities/{entity_id}/media",
+        f"/api/worlds/{world_id}/entities/{entity_id}/media",
         json={"content_type": "image/png", "size": 12},
         headers=csrf_headers(async_client),
     )
@@ -86,7 +86,7 @@ async def test_upload_and_read_round_trip_against_the_real_store(async_client, d
     upload_response = await _upload_real_bytes(mint, b"hello-world!")
     assert upload_response.status_code // 100 == 2
 
-    redirect_response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+    redirect_response = await async_client.get(f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     assert redirect_response.status_code == 302
 
     async with httpx.AsyncClient() as store_client:
@@ -102,13 +102,13 @@ async def test_read_response_is_cacheable_only_as_long_as_its_signed_url_stays_v
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
 
-    response = await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+    response = await async_client.get(f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
 
     assert response.headers["cache-control"] == "private, max-age=60"
 
@@ -121,7 +121,7 @@ async def test_real_store_rejects_upload_exceeding_the_signed_size_condition(asy
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
@@ -138,7 +138,7 @@ async def test_real_store_rejects_upload_with_a_different_content_type_than_decl
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
@@ -154,22 +154,22 @@ async def test_saving_an_article_sweeps_an_image_removed_from_it(async_client, d
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
-    pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
+    pic_path = f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
     signed_get_url = (await async_client.get(pic_path)).headers["location"]
 
     await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/article",
+        f"/api/worlds/{world_id}/entities/{entity_id}/article",
         json={"markdown": f"![]({pic_path})"},
         headers=csrf_headers(async_client),
     )
     save_response = await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/article",
+        f"/api/worlds/{world_id}/entities/{entity_id}/article",
         json={"markdown": "# No images here anymore"},
         headers=csrf_headers(async_client),
     )
@@ -185,18 +185,18 @@ async def test_saving_an_article_sweeps_a_file_uploaded_but_never_inserted(async
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
     signed_get_url = (
-        await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+        await async_client.get(f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     ).headers["location"]
 
     await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/article",
+        f"/api/worlds/{world_id}/entities/{entity_id}/article",
         json={"markdown": "# Never referenced the upload above"},
         headers=csrf_headers(async_client),
     )
@@ -211,17 +211,17 @@ async def test_saving_an_article_keeps_an_image_still_referenced(async_client, d
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
-    pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
+    pic_path = f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}"
     signed_get_url = (await async_client.get(pic_path)).headers["location"]
 
     await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/article",
+        f"/api/worlds/{world_id}/entities/{entity_id}/article",
         json={"markdown": f"# Still here\n\n![]({pic_path})"},
         headers=csrf_headers(async_client),
     )
@@ -236,19 +236,19 @@ async def test_purge_deletes_the_entitys_media_from_the_real_store(async_client,
     world_id, entity_id = await _create_world_and_entity(async_client)
     mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(mint, b"hello-world!")
     signed_get_url = (
-        await async_client.get(f"/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
+        await async_client.get(f"/api/worlds/{world_id}/entities/{entity_id}/media/{mint['file_id']}")
     ).headers["location"]
 
-    await async_client.delete(f"/worlds/{world_id}/entities/{entity_id}", headers=csrf_headers(async_client))
+    await async_client.delete(f"/api/worlds/{world_id}/entities/{entity_id}", headers=csrf_headers(async_client))
     purge_response = await async_client.delete(
-        f"/worlds/{world_id}/entities/{entity_id}/purge", headers=csrf_headers(async_client)
+        f"/api/worlds/{world_id}/entities/{entity_id}/purge", headers=csrf_headers(async_client)
     )
     assert purge_response.status_code == 204
 
@@ -263,33 +263,33 @@ async def test_replacing_a_maps_image_deletes_the_old_one_from_the_real_store(as
 
     old_mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(old_mint, b"old-image!!!")
-    old_pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{old_mint['file_id']}"
+    old_pic_path = f"/api/worlds/{world_id}/entities/{entity_id}/media/{old_mint['file_id']}"
     old_signed_get_url = (await async_client.get(old_pic_path)).headers["location"]
 
     await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/map",
+        f"/api/worlds/{world_id}/entities/{entity_id}/map",
         json={"pic": old_pic_path, "pins": []},
         headers=csrf_headers(async_client),
     )
 
     new_mint = (
         await async_client.post(
-            f"/worlds/{world_id}/entities/{entity_id}/media",
+            f"/api/worlds/{world_id}/entities/{entity_id}/media",
             json={"content_type": "image/png", "size": 12},
             headers=csrf_headers(async_client),
         )
     ).json()
     await _upload_real_bytes(new_mint, b"new-image!!!")
-    new_pic_path = f"/worlds/{world_id}/entities/{entity_id}/media/{new_mint['file_id']}"
+    new_pic_path = f"/api/worlds/{world_id}/entities/{entity_id}/media/{new_mint['file_id']}"
 
     replace_response = await async_client.put(
-        f"/worlds/{world_id}/entities/{entity_id}/map",
+        f"/api/worlds/{world_id}/entities/{entity_id}/map",
         json={"pic": new_pic_path, "pins": []},
         headers=csrf_headers(async_client),
     )

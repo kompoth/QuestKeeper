@@ -45,14 +45,14 @@ async def test_set_avatar_sets_the_callers_own_avatar():
 
     updated = await set_avatar(repos, FakeMediaStorage(), USER_ID, "new-file")
 
-    assert updated.avatar == "/media/new-file"
+    assert updated.avatar == "/api/media/new-file"
     stored = await repos.users.get_by_id(USER_ID)
     assert stored is not None
-    assert stored.avatar == "/media/new-file"
+    assert stored.avatar == "/api/media/new-file"
 
 
 async def test_set_avatar_deletes_the_old_avatar_file_when_replaced():
-    repos = make_repos(users=FakeUserRepository(users_by_id={USER_ID: make_user(avatar="/media/old-file")}))
+    repos = make_repos(users=FakeUserRepository(users_by_id={USER_ID: make_user(avatar="/api/media/old-file")}))
     storage = FakeMediaStorage()
 
     await set_avatar(repos, storage, USER_ID, "new-file")
@@ -79,7 +79,7 @@ async def test_set_avatar_raises_when_user_not_found():
 
 
 async def test_clear_avatar_removes_the_avatar_and_deletes_its_file():
-    repos = make_repos(users=FakeUserRepository(users_by_id={USER_ID: make_user(avatar="/media/old-file")}))
+    repos = make_repos(users=FakeUserRepository(users_by_id={USER_ID: make_user(avatar="/api/media/old-file")}))
     storage = FakeMediaStorage()
 
     updated = await clear_avatar(repos, storage, USER_ID)

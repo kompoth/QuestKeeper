@@ -10,7 +10,7 @@ interface MediaUploadDto {
 // its own (no scheme/host), so it never expires and is safe to persist (in article markdown or
 // Map.pic). Resolve with `apiUrl()` from `@/api/client` wherever it's actually rendered.
 export function mediaPath (worldId: string, entityId: string, fileId: string): string {
-  return `/worlds/${worldId}/entities/${entityId}/media/${fileId}`
+  return `/api/worlds/${worldId}/entities/${entityId}/media/${fileId}`
 }
 
 // Mints an upload policy at `mintPath` and uploads `file` directly to the object store. Returns the

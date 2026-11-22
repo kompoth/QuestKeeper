@@ -24,12 +24,12 @@ CSRF_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Mutating routes reachable before a session/CSRF cookie exists.
 CSRF_EXEMPT_PATHS = frozenset(
     {
-        "/auth/login",
-        "/auth/register",
-        "/auth/register/confirm",
-        "/auth/password-recovery",
-        "/auth/password-reset",
-        "/invites/confirm",
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/register/confirm",
+        "/api/auth/password-recovery",
+        "/api/auth/password-reset",
+        "/api/invites/confirm",
     }
 )
 

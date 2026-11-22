@@ -160,21 +160,21 @@ async def test_update_world_replaces_mutable_fields_for_the_owner():
 
 
 async def test_update_world_deletes_the_old_pic_when_replaced():
-    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/worlds/w1/pic/old-file")
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/api/worlds/w1/pic/old-file")
     repos = make_repos(world=world)
     storage = FakeMediaStorage()
 
-    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/worlds/w1/pic/new-file")
+    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/api/worlds/w1/pic/new-file")
 
     assert storage.deleted_prefixes == ["worlds/w1/pic/old-file"]
 
 
 async def test_update_world_does_not_delete_when_pic_is_unchanged():
-    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/worlds/w1/pic/same-file")
+    world = World(id=WORLD_ID, owner_id=OWNER_ID, name="World", pic="/api/worlds/w1/pic/same-file")
     repos = make_repos(world=world)
     storage = FakeMediaStorage()
 
-    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/worlds/w1/pic/same-file")
+    await update_world(repos, storage, OWNER_ID, WORLD_ID, "World", pic="/api/worlds/w1/pic/same-file")
 
     assert storage.deleted_prefixes == []
 

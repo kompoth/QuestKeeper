@@ -19,7 +19,7 @@ def global_media_key(file_id: str) -> str:
 
 def avatar_read_path(file_id: str) -> str:
     """The stable, non-expiring path stored on `User.avatar` - not a signed URL, never rewritten."""
-    return f"/media/{file_id}"
+    return f"/api/media/{file_id}"
 
 
 def extract_avatar_file_id(reference: str) -> str | None:
