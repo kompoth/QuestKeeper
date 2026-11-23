@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     s3_bucket: str
     s3_region: str = "us-east-1"
 
-    media_max_upload_bytes: int = 10 * 1024 * 1024
+    media_max_upload_bytes: int = 40 * 1024 * 1024
     # Short on purpose: a fresh signature is minted on every request, so this only bounds how long a
     # copied/leaked URL stays usable - it doesn't need to survive longer than one page load.
     media_presign_ttl_seconds: int = 60
