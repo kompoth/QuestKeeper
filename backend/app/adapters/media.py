@@ -53,3 +53,19 @@ class S3MediaStorage:
         async with self._session.resource("s3", **self._client_kwargs) as s3:
             bucket = await s3.Bucket(self._bucket)
             return [obj.key async for obj in bucket.objects.filter(Prefix=prefix)]
+
+    async def ensure_cors(self, *, allowed_origin: str) -> None:
+        async with self._session.client("s3", **self._client_kwargs) as s3:
+            await s3.put_bucket_cors(
+                Bucket=self._bucket,
+                CORSConfiguration={
+                    "CORSRules": [
+                        {
+                            "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
+                            "AllowedOrigins": [allowed_origin],
+                            "AllowedHeaders": ["*"],
+                            "ExposeHeaders": ["ETag"],
+                        }
+                    ]
+                },
+            )

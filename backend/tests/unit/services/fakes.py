@@ -488,6 +488,7 @@ class FakeMailer:
 class FakeMediaStorage:
     created_policies: list[str] = field(default_factory=list)  # keys an upload policy was minted for
     deleted_prefixes: list[str] = field(default_factory=list)
+    cors_allowed_origin: str | None = None
 
     async def create_upload_policy(
         self,
@@ -509,6 +510,9 @@ class FakeMediaStorage:
 
     async def list_objects(self, *, prefix: str) -> Sequence[str]:
         return [key for key in self.created_policies if key.startswith(prefix)]
+
+    async def ensure_cors(self, *, allowed_origin: str) -> None:
+        self.cors_allowed_origin = allowed_origin
 
 
 def make_repos(

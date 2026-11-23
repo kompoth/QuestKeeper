@@ -17,7 +17,7 @@ from app.api.routers.media import router as media_router
 from app.api.routers.profile import router as profile_router
 from app.api.routers.sharing import invites_router, permissions_router
 from app.api.routers.worlds import router as worlds_router
-from app.composition import build_repositories
+from app.composition import build_media_storage, build_repositories
 from app.config import get_settings
 from app.services.errors import EmailAlreadyRegisteredError
 from app.services.seed import ensure_seed_admin
@@ -26,6 +26,9 @@ from app.services.seed import ensure_seed_admin
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
+
+    await build_media_storage().ensure_cors(allowed_origin=settings.frontend_origin)
+
     if settings.seed_admin_email or settings.seed_admin_password:
         if not (settings.seed_admin_email and settings.seed_admin_password):
             raise RuntimeError("SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must both be set, or neither.")

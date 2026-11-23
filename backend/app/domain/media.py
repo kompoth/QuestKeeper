@@ -44,3 +44,12 @@ class MediaStorage(Protocol):
     async def list_objects(self, *, prefix: str) -> Sequence[str]:
         """Every object key starting with `prefix`, in no particular order."""
         ...
+
+    async def ensure_cors(self, *, allowed_origin: str) -> None:
+        """Sets the bucket's CORS policy to allow `allowed_origin` to read/write objects directly.
+
+        Idempotent - safe to call on every startup. Required because uploads/reads go straight
+        from the browser to the store via presigned URLs (a different origin than the app's own),
+        so without this the store rejects the browser's cross-origin requests.
+        """
+        ...
