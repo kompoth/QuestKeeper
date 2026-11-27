@@ -2,36 +2,25 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "**/Dockerfile"
-      - "docker-compose.prod.yml"
-      - ".github/workflows/deploy.yml"
+    tags:
+      - "v*"
 
 jobs:
-  backend-tests:
-    uses: ./.github/workflows/backend-tests.yml
-
-  frontend-checks:
+  verify-version:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
+      - name: Check tag matches VERSION
+        run: |
+          FILE_VERSION=$(cat VERSION)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag ${{ github.ref_name }} does not match VERSION file ($FILE_VERSION)"
+            exit 1
+          fi
 
   deploy:
-    needs: [backend-tests, frontend-checks]
+    needs: verify-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

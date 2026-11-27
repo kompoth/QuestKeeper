@@ -5,6 +5,7 @@ test instances - see CLAUDE.md's "Local convenience" section for the disposable 
 import httpx
 import pytest
 
+from app.config import get_settings
 from tests.integration.api.conftest import csrf_headers, login
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -127,7 +128,7 @@ async def test_real_store_rejects_upload_exceeding_the_signed_size_condition(asy
         )
     ).json()
 
-    oversized = b"x" * (10 * 1024 * 1024 + 1)
+    oversized = b"x" * (get_settings().media_max_upload_bytes + 1)
     response = await _upload_real_bytes(mint, oversized)
 
     assert response.status_code == 400

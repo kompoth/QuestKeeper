@@ -1,10 +1,6 @@
-name: Backend tests
+name: Backend checks
 
 on:
-  push:
-    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
-  pull_request:
-    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
   workflow_call:
 
 defaults:

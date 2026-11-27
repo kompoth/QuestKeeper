@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/**"
+
+jobs:
+  backend-checks:
+    uses: ./.github/workflows/backend-checks.yml
+
+  frontend-checks:
+    uses: ./.github/workflows/frontend-checks.yml
