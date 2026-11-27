@@ -1,0 +1,57 @@
+name: Backend checks
+
+on:
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv sync
+      - run: uv run pytest tests/unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: questkeeper_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: mysql+aiomysql://root:root@127.0.0.1:3306/questkeeper_test
+      S3_ENDPOINT_URL: http://localhost:9200
+      S3_ACCESS_KEY: questkeeper
+      S3_SECRET_KEY: questkeeper-test-secret
+      S3_BUCKET: questkeeper-test
+      S3_REGION: garage
+    steps:
+      - uses: actions/checkout@v7
+      # Service containers can't override `command`, and the Garage image's default CMD doesn't
+      # pass --single-node --default-bucket, so it's started manually instead (mirrors
+      # docker-compose.test.yml). A real Garage instance is required, not a mock - see CLAUDE.md.
+      - name: Start Garage (S3-compatible storage)
+        run: |
+          docker run -d --name garage-test \
+            -p 9200:3900 -p 9201:3901 -p 9203:3903 \
+            -e GARAGE_DEFAULT_ACCESS_KEY="$S3_ACCESS_KEY" \
+            -e GARAGE_DEFAULT_SECRET_KEY="$S3_SECRET_KEY" \
+            -e GARAGE_DEFAULT_BUCKET="$S3_BUCKET" \
+            -v ${{ github.workspace }}/docker/garage/test.toml:/etc/garage.toml:ro \
+            dxflrs/garage:v2.5.0 /garage server --single-node --default-bucket
+          timeout 30 bash -c 'until curl -sf http://localhost:9203/health; do sleep 1; done'
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv sync
+      - run: uv run pytest tests/integration

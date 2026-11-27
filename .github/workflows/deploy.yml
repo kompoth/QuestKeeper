@@ -1,0 +1,48 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag matches VERSION
+        run: |
+          FILE_VERSION=$(cat VERSION)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag ${{ github.ref_name }} does not match VERSION file ($FILE_VERSION)"
+            exit 1
+          fi
+
+  deploy:
+    needs: verify-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Trust deploy host
+        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync backend/
+        run: >
+          rsync -az --delete
+          backend/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/stacks/questkeeper/backend/
+
+      - name: Sync frontend/
+        run: >
+          rsync -az --delete
+          frontend/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/stacks/questkeeper/frontend/
+
+      # The deploy-command.sh restricted key ignores whatever is sent and always runs the fixed
+      # `docker compose build --pull && up -d` script server-side - this ssh call just triggers it.
+      - name: Trigger deploy
+        run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} true

@@ -1,0 +1,9 @@
+export interface World {
+  id: string
+  ownerId: string
+  name: string
+  description: string | null
+  pic: string | null
+  deletedAt: string | null
+  ownerName?: string
+}
